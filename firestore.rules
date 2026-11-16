@@ -1,0 +1,248 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // =========================================================================
+    // GLOBAL DEFAULT-DENY CATCH-ALL
+    // =========================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // HARDENED GLOBAL HELPERS
+    // =========================================================================
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 160 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null &&
+        request.auth.token.email_verified == true &&
+        request.auth.token.email is string;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function memberPath(workspaceId) {
+      return /databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid);
+    }
+
+    function isWorkspaceOwner(workspaceId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/workspaces/$(workspaceId)) &&
+        get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid;
+    }
+
+    function isWorkspaceMember(workspaceId) {
+      return isSignedIn() && (
+        exists(memberPath(workspaceId)) ||
+        isWorkspaceOwner(workspaceId)
+      );
+    }
+
+    function isWorkspaceEditorOrOwner(workspaceId) {
+      return isSignedIn() && (
+        isWorkspaceOwner(workspaceId) ||
+        (exists(memberPath(workspaceId)) && get(memberPath(workspaceId)).data.role in ['owner', 'editor'])
+      );
+    }
+
+    // =========================================================================
+    // 1. USERS (PII isolated strictly to self; no public list; no role escalation)
+    // =========================================================================
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'defaultLocale', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'defaultLocale', 'createdAt', 'updatedAt']) &&
+        data.uid is string && data.uid == request.auth.uid &&
+        data.email is string && data.email.size() > 0 && data.email.size() <= 255 &&
+        data.createdAt is string && data.createdAt.size() > 0 && data.createdAt.size() <= 40 &&
+        (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 40)) &&
+        (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 120)) &&
+        data.role in ['owner', 'editor', 'reviewer', 'viewer'] &&
+        data.defaultLocale in ['fr', 'en', 'fon'];
+    }
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isValidId(userId) &&
+        isOwner(userId) &&
+        isValidUser(incoming()) &&
+        incoming().email.lower() == request.auth.token.email.lower() &&
+        incoming().role == 'viewer';
+      allow update: if isValidId(userId) && isOwner(userId) && isValidUser(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().role == existing().role &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'defaultLocale', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    // =========================================================================
+    // 2. WORKSPACES, MEMBERS, INVITES & LOCKS (Strictly Server-Managed Writes)
+    // =========================================================================
+    match /workspaces/{workspaceId} {
+      allow get: if isValidId(workspaceId) && isWorkspaceMember(workspaceId);
+      allow list: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow write: if false;
+
+      // Memberships MUST ONLY be mutated server-side via verified workspace setup or single-use invite redemption.
+      match /members/{memberId} {
+        allow get: if isValidId(memberId) && isWorkspaceMember(workspaceId);
+        allow list: if false;
+        allow write: if false;
+      }
+
+      // Single-use SHA-256 hashed invites and pending invite locks are strictly server-only.
+      match /invites/{tokenHash} {
+        allow read, write: if false;
+      }
+
+      match /inviteLocks/{lockId} {
+        allow read, write: if false;
+      }
+    }
+
+    match /workspaceSlugLocks/{slug} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // 3. AUTHORING COLLECTIONS (Server-Mediated Access Only — Zero Direct List/Write)
+    // All reads/writes pass through Express Admin SDK (RBAC, Fongbe gate, DOMPurify, slugLocks).
+    // =========================================================================
+    match /posts/{postId} {
+      allow get: if isValidId(postId) && isWorkspaceMember(existing().workspaceId);
+      allow list: if false;
+      allow write: if false;
+    }
+
+    match /postTranslations/{translationId} {
+      allow get: if isValidId(translationId) && isWorkspaceMember(existing().workspaceId);
+      allow list: if false;
+      allow write: if false;
+    }
+
+    match /seoSettings/{seoId} {
+      allow get: if isValidId(seoId) && isWorkspaceMember(existing().workspaceId);
+      allow list: if false;
+      allow write: if false;
+    }
+
+    match /reactionPresets/{presetId} {
+      allow get: if isValidId(presetId) && isWorkspaceMember(existing().workspaceId);
+      allow list: if false;
+      allow write: if false;
+    }
+
+    match /categories/{categoryId} {
+      allow get: if isValidId(categoryId) && isWorkspaceMember(existing().workspaceId);
+      allow list: if false;
+      allow write: if false;
+    }
+
+    match /tags/{tagId} {
+      allow get: if isValidId(tagId) && isWorkspaceMember(existing().workspaceId);
+      allow list: if false;
+      allow write: if false;
+    }
+
+    match /mediaAssets/{assetId} {
+      allow get: if isValidId(assetId) && isWorkspaceMember(existing().workspaceId);
+      allow list: if false;
+      allow write: if false;
+    }
+
+    // =========================================================================
+    // 4. PROTECTED SERVER-ONLY COLLECTIONS (ZERO CLIENT WRITES; PUBLIC READS SERVER-MEDIATED)
+    // =========================================================================
+
+    // (1) Public reaction configuration & server-authoritative counters (served via Express API/SSR)
+    match /postReactions/{reactionId} {
+      allow read, write: if false;
+    }
+
+    // (2) Anonymous visitor active reaction states
+    match /visitorReactionStates/{stateId} {
+      allow read, write: if false;
+    }
+
+    // (3) Reaction idempotency keys
+    match /reactionIdempotency/{idemId} {
+      allow read, write: if false;
+    }
+
+    // (4) Persistent visitor reaction event ledger
+    match /reactionEvents/{eventId} {
+      allow read, write: if false;
+    }
+
+    // (5) Daily unique visitor markers
+    match /visitorDailyViews/{dailyId} {
+      allow read, write: if false;
+    }
+
+    // (6) Raw page view records
+    match /postViews/{viewId} {
+      allow read, write: if false;
+    }
+
+    // (7) Distributed sharded analytics counters
+    match /dailyAnalytics/{dateId} {
+      allow read, write: if false;
+      match /shards/{shardId} {
+        allow read, write: if false;
+      }
+    }
+
+    // (8) Distributed server-side rate-limit buckets
+    match /rateLimitBuckets/{bucketId} {
+      allow read, write: if false;
+    }
+
+    // (9) Transactional slug uniqueness locks
+    match /slugLocks/{lockId} {
+      allow read, write: if false;
+    }
+
+    // (10) Immutable published post snapshots (served strictly via Express SSR/public API)
+    match /publishedPosts/{postId} {
+      allow read, write: if false;
+    }
+
+    // (11) Published locale+slug public route index (server-only)
+    match /publishedSlugRoutes/{routeId} {
+      allow read, write: if false;
+    }
+
+    // (12) Immutable post version checkpoints (get by workspace members; list server-mediated)
+    match /postVersions/{versionId} {
+      allow get: if isValidId(versionId) && isWorkspaceMember(existing().workspaceId);
+      allow list: if false;
+      allow write: if false;
+    }
+
+    // (13) Immutable publishing lifecycle events (get by workspace members; list server-mediated)
+    match /publishingEvents/{eventId} {
+      allow get: if isValidId(eventId) && isWorkspaceMember(existing().workspaceId);
+      allow list: if false;
+      allow write: if false;
+    }
+
+    // (14) Immutable audit logs (restricted strictly to owner/editor roles; list server-mediated)
+    match /auditLogs/{logId} {
+      allow get: if isValidId(logId) && isWorkspaceEditorOrOwner(existing().workspaceId);
+      allow list: if false;
+      allow write: if false;
+    }
+  }
+}

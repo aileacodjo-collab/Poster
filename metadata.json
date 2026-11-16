@@ -1,0 +1,8 @@
+{
+  "name": "Remix AILEA PostManager",
+  "description": "Multilingual Markdown publishing, localization (French, English, Fongbe), semantic reaction engine, SEO studio, and privacy-conscious analytics platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

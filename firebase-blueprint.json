@@ -1,0 +1,561 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Authenticated publisher or team member account",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 255 },
+        "displayName": { "type": "string", "maxLength": 120 },
+        "role": { "type": "string", "enum": ["owner", "editor", "reviewer", "viewer"] },
+        "defaultLocale": { "type": "string", "enum": ["fr", "en", "fon"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "defaultLocale", "createdAt"]
+    },
+    "Workspace": {
+      "title": "Workspace",
+      "description": "Editorial publishing workspace isolating posts, presets, assets, and analytics",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "slug": { "type": "string", "pattern": "^[a-z0-9\\-]+$", "maxLength": 120 },
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "brandName": { "type": "string", "maxLength": 120 },
+        "defaultLocale": { "type": "string", "enum": ["fr", "en", "fon"] },
+        "baseUrl": { "type": "string", "maxLength": 255 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "slug", "ownerId", "brandName", "defaultLocale", "createdAt"]
+    },
+    "WorkspaceMember": {
+      "title": "WorkspaceMember",
+      "description": "Role-based access membership linking verified users (keyed by Firebase UID) to a workspace",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 255 },
+        "displayName": { "type": "string", "maxLength": 120 },
+        "role": { "type": "string", "enum": ["owner", "editor", "reviewer", "viewer"] },
+        "invitedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "workspaceId", "userId", "email", "role", "createdAt"]
+    },
+    "WorkspaceInvite": {
+      "title": "WorkspaceInvite",
+      "description": "Single-use SHA-256 hashed invitation token with 72h expiry, opaque public ID, and verified email binding",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "tokenHash": { "type": "string", "pattern": "^[a-f0-9]{64}$", "maxLength": 64 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 255 },
+        "role": { "type": "string", "enum": ["editor", "reviewer", "viewer"] },
+        "status": { "type": "string", "enum": ["pending", "accepted", "revoked", "expired"] },
+        "invitedBy": { "type": "string", "maxLength": 128 },
+        "invitedByEmail": { "type": "string", "format": "email", "maxLength": 255 },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "acceptedAt": { "type": "string", "format": "date-time" },
+        "acceptedByUid": { "type": "string", "maxLength": 128 },
+        "revokedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "workspaceId", "email", "role", "status", "invitedBy", "expiresAt", "createdAt"]
+    },
+    "InviteLock": {
+      "title": "InviteLock",
+      "description": "Server-only transactional uniqueness lock preventing concurrent duplicate pending invites for the same normalized email",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "inviteId": { "type": "string", "maxLength": 128 },
+        "tokenHash": { "type": "string", "pattern": "^[a-f0-9]{64}$", "maxLength": 64 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 255 },
+        "status": { "type": "string", "enum": ["pending"] },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "inviteId", "tokenHash", "workspaceId", "email", "expiresAt", "createdAt"]
+    },
+    "WorkspaceSlugLock": {
+      "title": "WorkspaceSlugLock",
+      "description": "Server-only transactional uniqueness lock for workspace slugs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 120 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "slug": { "type": "string", "pattern": "^[a-z0-9\\-]+$", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "workspaceId", "slug", "createdAt"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "Core multilingual article draft/authoring record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 120 },
+        "primaryLocale": { "type": "string", "enum": ["fr", "en", "fon"] },
+        "status": { "type": "string", "enum": ["draft", "validated", "published", "archived"] },
+        "categoryId": { "type": "string", "maxLength": 128 },
+        "tagIds": { "type": "array", "items": { "type": "string" } },
+        "featuredImageUrl": { "type": "string", "maxLength": 512 },
+        "reactionLimit": { "type": "integer" },
+        "allowReactionChange": { "type": "boolean" },
+        "reactionKeys": { "type": "array", "items": { "type": "string" } },
+        "currentVersionNumber": { "type": "integer" },
+        "publishedVersionNumber": { "type": "integer" },
+        "publishedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "workspaceId", "authorId", "primaryLocale", "status", "reactionLimit", "allowReactionChange", "currentVersionNumber", "createdAt", "updatedAt"]
+    },
+    "PostTranslation": {
+      "title": "PostTranslation",
+      "description": "Independent localized Markdown content and approval status for fr, en, or fon",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 160 },
+        "postId": { "type": "string", "maxLength": 128 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "isPublished": { "type": "boolean" },
+        "locale": { "type": "string", "enum": ["fr", "en", "fon"] },
+        "title": { "type": "string", "maxLength": 240 },
+        "slug": { "type": "string", "pattern": "^[a-z0-9\\-]+$", "maxLength": 140 },
+        "excerpt": { "type": "string", "maxLength": 600 },
+        "markdownContent": { "type": "string", "maxLength": 200000 },
+        "sanitizedHtml": { "type": "string", "maxLength": 300000 },
+        "translationStatus": { "type": "string", "enum": ["missing", "draft", "in_review", "approved"] },
+        "linguisticNotes": { "type": "string", "maxLength": 2000 },
+        "approvedBy": { "type": "string", "maxLength": 128 },
+        "approvedAt": { "type": "string", "format": "date-time" },
+        "wordCount": { "type": "integer" },
+        "readingTimeMinutes": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "postId", "workspaceId", "locale", "title", "slug", "markdownContent", "translationStatus", "updatedAt"]
+    },
+    "PostVersion": {
+      "title": "PostVersion",
+      "description": "Immutable publication or checkpoint snapshot of a post across locales, reactions, and SEO",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 160 },
+        "postId": { "type": "string", "maxLength": 128 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "versionNumber": { "type": "integer" },
+        "snapshotType": { "type": "string", "enum": ["draft_checkpoint", "published_snapshot", "restored_snapshot"] },
+        "commitMessage": { "type": "string", "maxLength": 300 },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "postId", "workspaceId", "versionNumber", "snapshotType", "createdBy", "createdAt"]
+    },
+    "PublishedPostSnapshot": {
+      "title": "PublishedPostSnapshot",
+      "description": "Immutable public-facing published post bundle isolated from draft edits and stripped of internal author/reviewer metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "postId": { "type": "string", "maxLength": 128 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["published", "unpublished"] },
+        "versionNumber": { "type": "integer" },
+        "categorySnapshot": { "type": ["object", "null"] },
+        "publishedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "postId", "workspaceId", "status", "versionNumber", "publishedAt"]
+    },
+    "PublishedSlugRoute": {
+      "title": "PublishedSlugRoute",
+      "description": "Deterministic locale+slug routing index pointing to active published snapshot",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 160 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "postId": { "type": "string", "maxLength": 128 },
+        "locale": { "type": "string", "enum": ["fr", "en", "fon"] },
+        "slug": { "type": "string", "maxLength": 140 },
+        "status": { "type": "string", "enum": ["published", "unpublished"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "workspaceId", "postId", "locale", "slug", "status", "updatedAt"]
+    },
+    "SlugLock": {
+      "title": "SlugLock",
+      "description": "Deterministic transactional global uniqueness lock for (locale, slug)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 160 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "postId": { "type": "string", "maxLength": 128 },
+        "locale": { "type": "string", "enum": ["fr", "en", "fon"] },
+        "slug": { "type": "string", "maxLength": 140 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "workspaceId", "postId", "locale", "slug", "createdAt"]
+    },
+    "SEOSetting": {
+      "title": "SEOSetting",
+      "description": "Per-post and per-locale SEO metadata configuration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 160 },
+        "postId": { "type": "string", "maxLength": 128 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "isPublished": { "type": "boolean" },
+        "locale": { "type": "string", "enum": ["fr", "en", "fon"] },
+        "metaTitle": { "type": "string", "maxLength": 120 },
+        "metaDescription": { "type": "string", "maxLength": 320 },
+        "canonicalUrl": { "type": "string", "maxLength": 512 },
+        "ogTitle": { "type": "string", "maxLength": 120 },
+        "ogDescription": { "type": "string", "maxLength": 320 },
+        "ogImageUrl": { "type": "string", "maxLength": 512 },
+        "twitterCardType": { "type": "string", "enum": ["summary", "summary_large_image"] },
+        "schemaType": { "type": "string", "enum": ["BlogPosting", "Article", "NewsArticle"] },
+        "noIndex": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "postId", "workspaceId", "locale", "metaTitle", "metaDescription", "twitterCardType", "schemaType", "updatedAt"]
+    },
+    "ReactionPreset": {
+      "title": "ReactionPreset",
+      "description": "Workspace-level reusable semantic emoji reaction preset",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "semanticKey": { "type": "string", "pattern": "^[a-z0-9_\\-]+$", "maxLength": 64 },
+        "emoji": { "type": "string", "maxLength": 16 },
+        "displayOrder": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "workspaceId", "semanticKey", "emoji", "displayOrder", "createdAt"]
+    },
+    "PostReaction": {
+      "title": "PostReaction",
+      "description": "Post-specific configurable reaction definition and server-authoritative aggregate count",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 160 },
+        "postId": { "type": "string", "maxLength": 128 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "isPublished": { "type": "boolean" },
+        "draftRemoved": { "type": "boolean" },
+        "semanticKey": { "type": "string", "pattern": "^[a-z0-9_\\-]+$", "maxLength": 64 },
+        "emoji": { "type": "string", "maxLength": 16 },
+        "displayOrder": { "type": "integer" },
+        "enabled": { "type": "boolean" },
+        "count": { "type": "integer" }
+      },
+      "required": ["id", "postId", "workspaceId", "semanticKey", "emoji", "displayOrder", "enabled", "count"]
+    },
+    "VisitorReactionState": {
+      "title": "VisitorReactionState",
+      "description": "Server-side active semantic keys held by an anonymous visitor hash on a post",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string", "maxLength": 128 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "visitorHash": { "type": "string", "maxLength": 128 },
+        "activeKeys": { "type": "array", "items": { "type": "string" } },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["postId", "workspaceId", "visitorHash", "activeKeys", "updatedAt"]
+    },
+    "ReactionIdempotency": {
+      "title": "ReactionIdempotency",
+      "description": "Server-side idempotency guard preventing duplicate reaction submissions (30-day TTL)",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string", "maxLength": 128 },
+        "visitorHash": { "type": "string", "maxLength": 128 },
+        "semanticKey": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["postId", "visitorHash", "semanticKey", "createdAt"]
+    },
+    "ReactionEvent": {
+      "title": "ReactionEvent",
+      "description": "Persistent anonymous visitor reaction event written strictly server-side",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 200 },
+        "postId": { "type": "string", "maxLength": 128 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "visitorHash": { "type": "string", "maxLength": 128 },
+        "semanticKey": { "type": "string", "maxLength": 64 },
+        "previousKey": { "type": "string", "maxLength": 64 },
+        "locale": { "type": "string", "enum": ["fr", "en", "fon"] },
+        "idempotencyKey": { "type": "string", "maxLength": 128 },
+        "action": { "type": "string", "enum": ["added", "changed", "removed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "postId", "workspaceId", "visitorHash", "semanticKey", "locale", "action", "createdAt"]
+    },
+    "VisitorDailyView": {
+      "title": "VisitorDailyView",
+      "description": "Server-side daily unique visitor deduplication marker (90-day TTL)",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string", "maxLength": 128 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "visitorHash": { "type": "string", "maxLength": 128 },
+        "viewedDate": { "type": "string", "maxLength": 10 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["postId", "workspaceId", "visitorHash", "viewedDate", "createdAt"]
+    },
+    "PostView": {
+      "title": "PostView",
+      "description": "Privacy-conscious page view and referral tracking event",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 160 },
+        "postId": { "type": "string", "maxLength": 128 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "visitorHash": { "type": "string", "maxLength": 128 },
+        "locale": { "type": "string", "enum": ["fr", "en", "fon"] },
+        "referrer": { "type": "string", "maxLength": 255 },
+        "isUnique": { "type": "boolean" },
+        "viewedDate": { "type": "string", "maxLength": 10 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "postId", "workspaceId", "visitorHash", "locale", "isUnique", "viewedDate", "createdAt"]
+    },
+    "DailyAnalyticsShard": {
+      "title": "DailyAnalyticsShard",
+      "description": "Distributed sharded daily analytics counter written strictly server-side",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "postId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 10 },
+        "views": { "type": "integer" },
+        "uniqueVisitors": { "type": "integer" },
+        "reactionsAdded": { "type": "integer" },
+        "reactionsRemoved": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "date", "views", "uniqueVisitors", "reactionsAdded", "updatedAt"]
+    },
+    "RateLimitBucket": {
+      "title": "RateLimitBucket",
+      "description": "Server-side distributed rate-limiting counter bucket",
+      "type": "object",
+      "properties": {
+        "key": { "type": "string", "maxLength": 160 },
+        "count": { "type": "integer" },
+        "windowStartMs": { "type": "integer" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["key", "count", "windowStartMs", "expiresAt"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Multilingual editorial category",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "slug": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "workspaceId", "slug", "createdAt"]
+    },
+    "Tag": {
+      "title": "Tag",
+      "description": "Multilingual content tag",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "slug": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "workspaceId", "slug", "createdAt"]
+    },
+    "MediaAsset": {
+      "title": "MediaAsset",
+      "description": "Validated editorial media asset",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "filename": { "type": "string", "maxLength": 180 },
+        "mimeType": { "type": "string", "maxLength": 80 },
+        "sizeBytes": { "type": "integer" },
+        "url": { "type": "string", "maxLength": 512 },
+        "storagePath": { "type": "string", "maxLength": 512 },
+        "uploadedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "workspaceId", "filename", "mimeType", "sizeBytes", "url", "uploadedBy", "createdAt"]
+    },
+    "PublishingEvent": {
+      "title": "PublishingEvent",
+      "description": "Immutable publishing lifecycle event",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 160 },
+        "postId": { "type": "string", "maxLength": 128 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "versionNumber": { "type": "integer" },
+        "eventType": { "type": "string", "enum": ["published", "unpublished", "restored"] },
+        "actorId": { "type": "string", "maxLength": 128 },
+        "actorEmail": { "type": "string", "maxLength": 255 },
+        "summary": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "postId", "workspaceId", "versionNumber", "eventType", "actorId", "createdAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Security and editorial audit log entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 160 },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "actorId": { "type": "string", "maxLength": 128 },
+        "actorEmail": { "type": "string", "maxLength": 255 },
+        "action": { "type": "string", "maxLength": 120 },
+        "entityType": { "type": "string", "maxLength": 80 },
+        "entityId": { "type": "string", "maxLength": 128 },
+        "details": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "workspaceId", "actorId", "action", "entityType", "entityId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Private user account profiles indexed by Firebase UID"
+    },
+    "/workspaces/{workspaceId}": {
+      "schema": { "$ref": "#/entities/Workspace" },
+      "description": "Editorial workspaces owned by publishers"
+    },
+    "/workspaces/{workspaceId}/members/{memberId}": {
+      "schema": { "$ref": "#/entities/WorkspaceMember" },
+      "description": "Server-managed role-based access members indexed by UID"
+    },
+    "/workspaces/{workspaceId}/invites/{tokenHash}": {
+      "schema": { "$ref": "#/entities/WorkspaceInvite" },
+      "description": "Server-only single-use workspace invitations keyed by SHA-256 token hash"
+    },
+    "/workspaces/{workspaceId}/inviteLocks/{lockId}": {
+      "schema": { "$ref": "#/entities/InviteLock" },
+      "description": "Server-only pending invitation uniqueness locks keyed by normalized email hash"
+    },
+    "/workspaceSlugLocks/{slug}": {
+      "schema": { "$ref": "#/entities/WorkspaceSlugLock" },
+      "description": "Server-only workspace slug uniqueness locks"
+    },
+    "/posts/{postId}": {
+      "schema": { "$ref": "#/entities/Post" },
+      "description": "Core multilingual draft/authoring posts"
+    },
+    "/postTranslations/{translationId}": {
+      "schema": { "$ref": "#/entities/PostTranslation" },
+      "description": "Localized fr/en/fon content per post"
+    },
+    "/postVersions/{versionId}": {
+      "schema": { "$ref": "#/entities/PostVersion" },
+      "description": "Immutable publication and draft snapshots (server-write only)"
+    },
+    "/publishedPosts/{postId}": {
+      "schema": { "$ref": "#/entities/PublishedPostSnapshot" },
+      "description": "Immutable public snapshots isolated from draft edits (server-write only)"
+    },
+    "/publishedSlugRoutes/{routeId}": {
+      "schema": { "$ref": "#/entities/PublishedSlugRoute" },
+      "description": "Published locale+slug routing lookups (server-write only)"
+    },
+    "/slugLocks/{lockId}": {
+      "schema": { "$ref": "#/entities/SlugLock" },
+      "description": "Server-only transactional slug uniqueness locks"
+    },
+    "/seoSettings/{seoId}": {
+      "schema": { "$ref": "#/entities/SEOSetting" },
+      "description": "Localized SEO metadata per post and locale"
+    },
+    "/reactionPresets/{presetId}": {
+      "schema": { "$ref": "#/entities/ReactionPreset" },
+      "description": "Workspace reusable semantic reaction presets"
+    },
+    "/postReactions/{reactionId}": {
+      "schema": { "$ref": "#/entities/PostReaction" },
+      "description": "Per-post configurable reactions and aggregate counts (server-write only)"
+    },
+    "/visitorReactionStates/{stateId}": {
+      "schema": { "$ref": "#/entities/VisitorReactionState" },
+      "description": "Server-only visitor reaction state records"
+    },
+    "/reactionIdempotency/{idemId}": {
+      "schema": { "$ref": "#/entities/ReactionIdempotency" },
+      "description": "Server-only reaction idempotency tokens"
+    },
+    "/reactionEvents/{eventId}": {
+      "schema": { "$ref": "#/entities/ReactionEvent" },
+      "description": "Server-only anonymous visitor reaction events"
+    },
+    "/visitorDailyViews/{dailyId}": {
+      "schema": { "$ref": "#/entities/VisitorDailyView" },
+      "description": "Server-only unique daily visitor deduplication markers"
+    },
+    "/postViews/{viewId}": {
+      "schema": { "$ref": "#/entities/PostView" },
+      "description": "Server-only privacy-conscious view analytics records"
+    },
+    "/dailyAnalytics/{dateId}": {
+      "schema": { "$ref": "#/entities/DailyAnalyticsShard" },
+      "description": "Server-only daily analytics root documents"
+    },
+    "/dailyAnalytics/{dateId}/shards/{shardId}": {
+      "schema": { "$ref": "#/entities/DailyAnalyticsShard" },
+      "description": "Server-only distributed sharded analytics counters"
+    },
+    "/rateLimitBuckets/{bucketId}": {
+      "schema": { "$ref": "#/entities/RateLimitBucket" },
+      "description": "Server-only distributed rate limit counters"
+    },
+    "/categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "Workspace categories"
+    },
+    "/tags/{tagId}": {
+      "schema": { "$ref": "#/entities/Tag" },
+      "description": "Workspace tags"
+    },
+    "/mediaAssets/{assetId}": {
+      "schema": { "$ref": "#/entities/MediaAsset" },
+      "description": "Uploaded editorial media assets"
+    },
+    "/publishingEvents/{eventId}": {
+      "schema": { "$ref": "#/entities/PublishingEvent" },
+      "description": "Server-only lifecycle publishing events"
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Server-only security and action audit logs"
+    }
+  }
+}
