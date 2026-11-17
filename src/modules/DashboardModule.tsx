@@ -17,18 +17,27 @@ export function DashboardModule({ onNavigate, onTriggerImport, onTriggerNewPost 
   const { posts, loadingData, role } = useAuth();
   const { locale, t } = useI18n();
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
+    setAnalyticsLoading(true);
+    setAnalyticsError(null);
     apiRequest<{ summary: AnalyticsSummary }>('/api/admin/analytics')
       .then((res) => {
         if (active) setAnalytics(res.summary);
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (active) setAnalyticsError(err instanceof Error ? err.message : t.common.loadError);
+      })
+      .finally(() => {
+        if (active) setAnalyticsLoading(false);
+      });
     return () => {
       active = false;
     };
-  }, [posts.length]);
+  }, [posts.length, t.common.loadError]);
 
   const publishedCount = posts.filter((p) => p.post.status === 'published').length;
   const recentEvents = posts
@@ -39,7 +48,7 @@ export function DashboardModule({ onNavigate, onTriggerImport, onTriggerNewPost 
           b.translations[b.post.primaryLocale]?.title ||
           b.translations.fr?.title ||
           b.translations.en?.title ||
-          'Article',
+          t.dashboard.articleHeading,
       }))
     )
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
@@ -72,6 +81,12 @@ export function DashboardModule({ onNavigate, onTriggerImport, onTriggerNewPost 
         )}
       </div>
 
+      {analyticsError && (
+        <div className="clay-card p-4 bg-red-50 border-red-200 text-sm text-red-800">
+          {analyticsError}
+        </div>
+      )}
+
       {/* Real KPI Strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="clay-card p-5">
@@ -89,13 +104,13 @@ export function DashboardModule({ onNavigate, onTriggerImport, onTriggerNewPost 
         <div className="clay-card p-5">
           <div className="text-xs font-semibold text-[#525866]">{t.dashboard.totalViews}</div>
           <div className="text-3xl font-bold text-[#17191C] mt-2 font-mono-tabular">
-            {analytics ? analytics.totalViews : 0}
+            {analyticsLoading && !analytics ? '…' : analytics ? analytics.totalViews : 0}
           </div>
         </div>
         <div className="clay-card p-5">
           <div className="text-xs font-semibold text-[#525866]">{t.dashboard.totalReactions}</div>
           <div className="text-3xl font-bold text-[#006B35] mt-2 font-mono-tabular">
-            {analytics ? analytics.totalReactions : 0}
+            {analyticsLoading && !analytics ? '…' : analytics ? analytics.totalReactions : 0}
           </div>
         </div>
       </div>
@@ -124,7 +139,7 @@ export function DashboardModule({ onNavigate, onTriggerImport, onTriggerNewPost 
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-[#DFE5EC] text-xs font-semibold text-[#525866]">
-                    <th className="py-3 pr-4">Article</th>
+                    <th className="py-3 pr-4">{t.dashboard.articleHeading}</th>
                     <th className="py-3 px-3">FR</th>
                     <th className="py-3 px-3">EN</th>
                     <th className="py-3 px-3">FON</th>
@@ -137,7 +152,7 @@ export function DashboardModule({ onNavigate, onTriggerImport, onTriggerNewPost 
                       bundle.translations[locale]?.title ||
                       bundle.translations[bundle.post.primaryLocale]?.title ||
                       bundle.translations.fr?.title ||
-                      'Sans titre';
+                      t.common.untitled;
                     const pubTr = bundle.translations[locale] || bundle.translations[bundle.post.primaryLocale];
                     return (
                       <tr key={bundle.post.id} className="hover:bg-[#F8FAFB]">

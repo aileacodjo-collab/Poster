@@ -10,9 +10,14 @@ import { FullPostBundle, Locale, SUPPORTED_LOCALES, TranslationStatus } from '..
 interface TranslationStudioModuleProps {
   selectedPostId: string | null;
   onSelectPost: (postId: string | null) => void;
+  initialTargetLocale?: Locale;
 }
 
-export function TranslationStudioModule({ selectedPostId, onSelectPost }: TranslationStudioModuleProps) {
+export function TranslationStudioModule({
+  selectedPostId,
+  onSelectPost,
+  initialTargetLocale = 'fon',
+}: TranslationStudioModuleProps) {
   const { posts, setPosts, role } = useAuth();
   const { t } = useI18n();
   const canEdit = role === 'owner' || role === 'editor' || role === 'reviewer';
@@ -23,7 +28,7 @@ export function TranslationStudioModule({ selectedPostId, onSelectPost }: Transl
   );
 
   const [refLocale, setRefLocale] = useState<Locale>('fr');
-  const [targetLocale, setTargetLocale] = useState<Locale>('fon');
+  const [targetLocale, setTargetLocale] = useState<Locale>(initialTargetLocale);
   const canApproveCurrentLocale = targetLocale === 'fon' ? role === 'owner' || role === 'reviewer' : canEdit;
   const initialTargetTr = activeBundle?.translations[targetLocale] || null;
   const [title, setTitle] = useState(initialTargetTr?.title || '');
@@ -50,7 +55,7 @@ export function TranslationStudioModule({ selectedPostId, onSelectPost }: Transl
     setLinguisticNotes(tr?.linguisticNotes || '');
     setTranslationStatus(tr?.translationStatus || 'missing');
     setFeedback(null);
-  }, [activeBundle?.post.id, targetLocale]);
+  }, [activeBundle?.post.id, activeBundle?.post.updatedAt, targetLocale]);
 
   const refTr = activeBundle?.translations[refLocale] || null;
 
@@ -94,7 +99,7 @@ export function TranslationStudioModule({ selectedPostId, onSelectPost }: Transl
       setTranslationStatus(res.bundle.translations[targetLocale]?.translationStatus || nextStatus);
       setFeedback(`${LOCALE_META[targetLocale].nativeName} — ${t.common.saved}`);
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Erreur d’enregistrement.');
+      setFeedback(err instanceof Error ? err.message : t.common.saveError);
     } finally {
       setSaving(false);
     }
@@ -119,7 +124,7 @@ export function TranslationStudioModule({ selectedPostId, onSelectPost }: Transl
         >
           {posts.map((b) => (
             <option key={b.post.id} value={b.post.id}>
-              {b.translations[b.post.primaryLocale]?.title || b.translations.fr?.title || 'Sans titre'}
+              {b.translations[b.post.primaryLocale]?.title || b.translations.fr?.title || t.common.untitled}
             </option>
           ))}
         </select>
@@ -154,7 +159,7 @@ export function TranslationStudioModule({ selectedPostId, onSelectPost }: Transl
                 {tr?.title || '—'}
               </div>
               <div className="text-xs text-[#8A94A6] font-mono-tabular mt-1">
-                {tr?.wordCount || 0} mots · /{loc}/{tr?.slug || '…'}
+                {tr?.wordCount || 0} {t.common.words} · /{loc}/{tr?.slug || '…'}
               </div>
             </button>
           );
@@ -243,7 +248,7 @@ export function TranslationStudioModule({ selectedPostId, onSelectPost }: Transl
 
           <div>
             <label className="block text-xs font-semibold text-[#525866] mb-1">
-              Titre ({LOCALE_META[targetLocale].nativeName})
+              {t.postManager.titleLabel} ({LOCALE_META[targetLocale].nativeName})
             </label>
             <input
               type="text"
@@ -289,7 +294,7 @@ export function TranslationStudioModule({ selectedPostId, onSelectPost }: Transl
 
           <div>
             <label className="block text-xs font-semibold text-[#525866] mb-1">
-              Markdown ({LOCALE_META[targetLocale].nativeName})
+              {t.translations.markdownLabel} ({LOCALE_META[targetLocale].nativeName})
             </label>
             <textarea
               ref={textareaRef}
@@ -310,7 +315,7 @@ export function TranslationStudioModule({ selectedPostId, onSelectPost }: Transl
               value={linguisticNotes}
               disabled={!canEdit}
               onChange={(e) => setLinguisticNotes(e.target.value)}
-              placeholder="Ex. : Vérification des tons hauts/bas et orthographe Gbe"
+              placeholder={t.translations.linguisticNotesPlaceholder}
               className="clay-input text-sm"
             />
           </div>
@@ -339,7 +344,7 @@ export function TranslationStudioModule({ selectedPostId, onSelectPost }: Transl
                 disabled={saving || !canApproveCurrentLocale || !title.trim() || !markdownContent.trim()}
                 title={
                   !canApproveCurrentLocale
-                    ? 'La validation Fɔngbè est réservée aux relecteurs humains (reviewer) ou propriétaires.'
+                    ? t.translations.reviewerOnlyTooltip
                     : undefined
                 }
                 onClick={() => handleSaveTranslation('approved')}

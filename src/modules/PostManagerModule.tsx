@@ -40,8 +40,8 @@ export function PostManagerModule({
   openImportModal,
   onCloseModals,
 }: PostManagerModuleProps) {
-  const { posts, setPosts, categories, mediaAssets, role } = useAuth();
-  const { t } = useI18n();
+  const { posts, setPosts, categories, tags, mediaAssets, workspace, role } = useAuth();
+  const { locale, t } = useI18n();
   const canEdit = role === 'owner' || role === 'editor';
 
   const activeBundle = useMemo(
@@ -56,11 +56,14 @@ export function PostManagerModule({
   const [markdown, setMarkdown] = useState('');
   const [featuredImageUrl, setFeaturedImageUrl] = useState('');
   const [categoryId, setCategoryId] = useState<string>('');
+  const [tagIds, setTagIds] = useState<string[]>([]);
   const [savingState, setSavingState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [confirmDeletePost, setConfirmDeletePost] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [newPrimaryLocale, setNewPrimaryLocale] = useState<Locale>(workspace?.defaultLocale || 'fr');
   const [importText, setImportText] = useState(
     `---\ntitle: Nouvel article éditorial\nslug: nouvel-article-editorial\nlocale: fr\nexcerpt: Résumé concis de votre publication multilingue.\n---\n\n## Introduction\n\nÉcrivez votre article en **Markdown** avec tableaux GFM, citations et listes de tâches.\n\n- [x] Rédaction en français\n- [ ] Traduction anglaise\n- [ ] Révision fɔngbè\n`
   );
@@ -68,6 +71,12 @@ export function PostManagerModule({
 
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dirtyRef = useRef(false);
+
+  useEffect(() => {
+    if (workspace?.defaultLocale) {
+      setNewPrimaryLocale(workspace.defaultLocale);
+    }
+  }, [workspace?.defaultLocale]);
 
   useEffect(() => {
     if (openCreateModal) setShowCreate(true);
@@ -84,9 +93,23 @@ export function PostManagerModule({
     setMarkdown(tr?.markdownContent || '');
     setFeaturedImageUrl(activeBundle.post.featuredImageUrl || '');
     setCategoryId(activeBundle.post.categoryId || '');
+    setTagIds(activeBundle.post.tagIds || []);
+    setConfirmDeletePost(false);
     dirtyRef.current = false;
     setSavingState('idle');
   }, [activeBundle?.post.id, editLocale]);
+
+  useEffect(() => {
+    if (!activeBundle || dirtyRef.current) return;
+    const tr = activeBundle.translations[editLocale];
+    setTitle(tr?.title || '');
+    setSlug(tr?.slug || '');
+    setExcerpt(tr?.excerpt || '');
+    setMarkdown(tr?.markdownContent || '');
+    setFeaturedImageUrl(activeBundle.post.featuredImageUrl || '');
+    setCategoryId(activeBundle.post.categoryId || '');
+    setTagIds(activeBundle.post.tagIds || []);
+  }, [activeBundle?.post.updatedAt]);
 
   const parsedFm = useMemo(() => parseMarkdownWithFrontmatter(markdown), [markdown]);
   const previewHtml = useMemo(() => sanitizeAndRenderMarkdown(parsedFm.body), [parsedFm.body]);
@@ -100,6 +123,7 @@ export function PostManagerModule({
         ...activeBundle.post,
         featuredImageUrl,
         categoryId: categoryId || null,
+        tagIds,
       },
       translations: {
         ...activeBundle.translations,
@@ -114,15 +138,15 @@ export function PostManagerModule({
           : null,
       },
     };
-  }, [activeBundle, editLocale, title, slug, excerpt, markdown, featuredImageUrl, categoryId]);
+  }, [activeBundle, editLocale, title, slug, excerpt, markdown, featuredImageUrl, categoryId, tagIds]);
 
   const validationReport = useMemo(() => {
     if (!liveBundleForValidation) return { valid: false, errors: [], warnings: [] };
     return validatePostForPublication(liveBundleForValidation);
   }, [liveBundleForValidation]);
 
-  const persistSave = async (createCheckpoint = false) => {
-    if (!activeBundle || !canEdit) return;
+  const persistSave = async (createCheckpoint = false): Promise<boolean> => {
+    if (!activeBundle || !canEdit) return false;
     setSavingState('saving');
     setFeedback(null);
     try {
@@ -131,6 +155,7 @@ export function PostManagerModule({
         body: {
           featuredImageUrl,
           categoryId: categoryId || null,
+          tagIds,
         },
       });
       const res = await apiRequest<{ bundle: FullPostBundle }>(
@@ -149,9 +174,11 @@ export function PostManagerModule({
       setPosts((prev) => prev.map((item) => (item.post.id === res.bundle.post.id ? res.bundle : item)));
       dirtyRef.current = false;
       setSavingState('saved');
+      return true;
     } catch (err) {
       setSavingState('error');
-      setFeedback(err instanceof Error ? err.message : 'Erreur d’enregistrement.');
+      setFeedback(err instanceof Error ? err.message : t.common.saveError);
+      return false;
     }
   };
 
@@ -160,12 +187,12 @@ export function PostManagerModule({
     if (!dirtyRef.current || !activeBundle || !canEdit) return;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
-      persistSave(false);
+      void persistSave(false);
     }, 1800);
     return () => {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     };
-  }, [title, slug, excerpt, markdown, featuredImageUrl, categoryId]);
+  }, [title, slug, excerpt, markdown, featuredImageUrl, categoryId, tagIds]);
 
   const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -174,16 +201,16 @@ export function PostManagerModule({
     try {
       const res = await apiRequest<{ bundle: FullPostBundle }>('/api/admin/posts', {
         method: 'POST',
-        body: { title: newTitle.trim(), primaryLocale: 'fr' },
+        body: { title: newTitle.trim(), primaryLocale: newPrimaryLocale },
       });
       setPosts((prev) => [res.bundle, ...prev]);
       onSelectPost(res.bundle.post.id);
-      setEditLocale('fr');
+      setEditLocale(newPrimaryLocale);
       setNewTitle('');
       setShowCreate(false);
       onCloseModals?.();
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Création échouée.');
+      setFeedback(err instanceof Error ? err.message : t.common.saveError);
     }
   };
 
@@ -195,7 +222,7 @@ export function PostManagerModule({
         '/api/admin/posts/import',
         {
           method: 'POST',
-          body: { rawMarkdown: importText, defaultLocale: 'fr' },
+          body: { rawMarkdown: importText, defaultLocale: locale },
         }
       );
       setPosts((prev) => [res.bundle, ...prev]);
@@ -204,15 +231,16 @@ export function PostManagerModule({
       setShowImport(false);
       onCloseModals?.();
       if (res.frontmatterErrors.length > 0) {
-        setFeedback(`Importé avec avertissements YAML : ${res.frontmatterErrors.join(', ')}`);
+        setFeedback(`YAML: ${res.frontmatterErrors.join(', ')}`);
       }
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Import Markdown échoué.');
+      setFeedback(err instanceof Error ? err.message : t.postManager.importValidationError);
     }
   };
 
   const handleFileUploadImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
@@ -237,13 +265,14 @@ export function PostManagerModule({
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Export impossible.');
+      setFeedback(err instanceof Error ? err.message : t.common.requestError);
     }
   };
 
   const handlePublish = async () => {
     if (!activeBundle) return;
-    await persistSave(false);
+    const saved = await persistSave(false);
+    if (!saved) return;
     setFeedback(null);
     try {
       const res = await apiRequest<{ bundle: FullPostBundle }>(
@@ -253,7 +282,7 @@ export function PostManagerModule({
       setPosts((prev) => prev.map((b) => (b.post.id === res.bundle.post.id ? res.bundle : b)));
       setFeedback(t.postManager.publishReady);
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Publication bloquée.');
+      setFeedback(err instanceof Error ? err.message : t.postManager.publishBlocked);
     }
   };
 
@@ -266,7 +295,7 @@ export function PostManagerModule({
       );
       setPosts((prev) => prev.map((b) => (b.post.id === res.bundle.post.id ? res.bundle : b)));
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Dépublication impossible.');
+      setFeedback(err instanceof Error ? err.message : t.common.requestError);
     }
   };
 
@@ -283,9 +312,11 @@ export function PostManagerModule({
       setSlug(restoredTr?.slug || '');
       setExcerpt(restoredTr?.excerpt || '');
       setMarkdown(restoredTr?.markdownContent || '');
-      setFeedback(`Version v${versionNumber} restaurée.`);
+      setTagIds(res.bundle.post.tagIds || []);
+      dirtyRef.current = false;
+      setFeedback(t.postManager.restoredVersionNotice.replace('{version}', String(versionNumber)));
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Restauration impossible.');
+      setFeedback(err instanceof Error ? err.message : t.common.requestError);
     }
   };
 
@@ -295,10 +326,16 @@ export function PostManagerModule({
       await apiRequest(`/api/admin/posts/${activeBundle.post.id}`, { method: 'DELETE' });
       const remaining = posts.filter((p) => p.post.id !== activeBundle.post.id);
       setPosts(remaining);
+      setConfirmDeletePost(false);
       onSelectPost(remaining[0]?.post.id || null);
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Suppression impossible.');
+      setFeedback(err instanceof Error ? err.message : t.common.deleteError);
     }
+  };
+
+  const toggleTag = (tid: string) => {
+    dirtyRef.current = true;
+    setTagIds((prev) => (prev.includes(tid) ? prev.filter((id) => id !== tid) : [...prev, tid]));
   };
 
   return (
@@ -310,11 +347,11 @@ export function PostManagerModule({
             value={activeBundle?.post.id || ''}
             onChange={(e) => onSelectPost(e.target.value)}
             className="clay-input w-auto min-w-[240px] max-w-sm font-semibold"
-            aria-label="Sélectionner un article"
+            aria-label={t.postManager.selectPost}
           >
             {posts.map((b) => (
               <option key={b.post.id} value={b.post.id}>
-                {b.translations[b.post.primaryLocale]?.title || b.translations.fr?.title || 'Sans titre'} (
+                {b.translations[b.post.primaryLocale]?.title || b.translations.fr?.title || t.common.untitled} (
                 {t.statuses[b.post.status]})
               </option>
             ))}
@@ -362,14 +399,28 @@ export function PostManagerModule({
       {showCreate && (
         <form onSubmit={handleCreatePost} className="clay-card p-6 space-y-4">
           <h2 className="text-lg font-bold text-[#17191C]">{t.dashboard.newPost}</h2>
-          <input
-            type="text"
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            placeholder="Titre de l’article en français…"
-            className="clay-input"
-            required
-          />
+          <div className="grid sm:grid-cols-3 gap-3">
+            <input
+              type="text"
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder={t.postManager.newPostTitlePlaceholder}
+              className="clay-input sm:col-span-2"
+              required
+            />
+            <select
+              value={newPrimaryLocale}
+              onChange={(e) => setNewPrimaryLocale(e.target.value as Locale)}
+              aria-label={t.postManager.primaryLocaleLabel}
+              className="clay-input text-sm"
+            >
+              {SUPPORTED_LOCALES.map((loc) => (
+                <option key={loc} value={loc}>
+                  {t.postManager.primaryLocaleLabel}: {loc.toUpperCase()}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="flex items-center gap-3">
             <button type="submit" className="clay-btn-primary">
               {t.common.create}
@@ -395,7 +446,7 @@ export function PostManagerModule({
             <h2 className="text-lg font-bold text-[#17191C]">{t.dashboard.importMarkdown}</h2>
             <label className="clay-btn-secondary text-sm cursor-pointer">
               <FileUp className="w-4 h-4" />
-              Charger un fichier .md
+              {t.postManager.loadMdFile}
               <input type="file" accept=".md,.markdown,text/markdown,text/plain" onChange={handleFileUploadImport} className="hidden" />
             </label>
           </div>
@@ -403,6 +454,7 @@ export function PostManagerModule({
             value={importText}
             onChange={(e) => setImportText(e.target.value)}
             rows={10}
+            placeholder={t.postManager.pasteMdPlaceholder}
             className="clay-input font-mono-tabular text-sm"
             required
           />
@@ -546,7 +598,7 @@ export function PostManagerModule({
                 <div className="clay-card p-5 space-y-4">
                   <div>
                     <label className="block text-xs font-semibold text-[#525866] mb-1.5">
-                      Titre ({editLocale.toUpperCase()})
+                      {t.postManager.titleLabel} ({editLocale.toUpperCase()})
                     </label>
                     <input
                       type="text"
@@ -617,7 +669,7 @@ export function PostManagerModule({
                         }}
                         className="clay-input text-sm"
                       >
-                        <option value="">Aucune image</option>
+                        <option value="">{t.postManager.noImage}</option>
                         {mediaAssets.map((m) => (
                           <option key={m.id} value={m.url}>
                             {m.filename}
@@ -643,12 +695,43 @@ export function PostManagerModule({
                   </div>
 
                   <div>
+                    <div className="text-xs font-semibold text-[#525866] mb-1.5">
+                      {t.postManager.tagsLabel}
+                    </div>
+                    {tags.length === 0 ? (
+                      <p className="text-xs text-[#8A94A6]">{t.postManager.noTags}</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {tags.map((tag) => {
+                          const selected = tagIds.includes(tag.id);
+                          return (
+                            <button
+                              key={tag.id}
+                              type="button"
+                              disabled={!canEdit}
+                              onClick={() => toggleTag(tag.id)}
+                              aria-pressed={selected}
+                              className={`min-h-[36px] px-3 rounded-[999px] text-xs font-semibold border transition-colors cursor-pointer disabled:opacity-60 ${
+                                selected
+                                  ? 'bg-[#E5F3EA] border-[#006B35] text-[#006B35]'
+                                  : 'bg-[#F8FAFB] border-[#DFE5EC] text-[#525866] hover:text-[#17191C]'
+                              }`}
+                            >
+                              #{tag.names[editLocale] || tag.names.fr || tag.slug}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-xs font-semibold text-[#525866]">
                         {t.postManager.markdownEditor} (CommonMark + GFM + YAML)
                       </label>
                       <span className="text-xs font-mono-tabular text-[#525866]">
-                        {markdown.length} car.
+                        {markdown.length} {t.common.charactersShort}
                       </span>
                     </div>
                     <textarea
@@ -664,15 +747,37 @@ export function PostManagerModule({
                   </div>
 
                   {canEdit && (
-                    <div className="flex justify-end pt-2">
-                      <button
-                        type="button"
-                        onClick={handleDeletePost}
-                        className="min-h-[48px] px-3 rounded-[10px] text-sm font-semibold text-red-700 hover:bg-red-50 inline-flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        {t.common.delete}
-                      </button>
+                    <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+                      {confirmDeletePost ? (
+                        <>
+                          <span className="text-xs font-semibold text-red-700">
+                            {t.postManager.deleteConfirmPrompt}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleDeletePost}
+                            className="min-h-[40px] px-3 rounded-[10px] text-xs font-semibold bg-red-600 text-white hover:bg-red-700 cursor-pointer"
+                          >
+                            {t.common.confirm}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeletePost(false)}
+                            className="min-h-[40px] px-3 rounded-[10px] text-xs font-semibold border border-[#DFE5EC] text-[#525866] hover:bg-[#F1F4F6] cursor-pointer"
+                          >
+                            {t.common.cancel}
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeletePost(true)}
+                          className="min-h-[48px] px-3 rounded-[10px] text-sm font-semibold text-red-700 hover:bg-red-50 inline-flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          {t.common.delete}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -718,7 +823,7 @@ export function PostManagerModule({
                     {t.postManager.livePreview} ({editLocale.toUpperCase()})
                   </div>
                   <h2 className="font-editorial text-2xl font-bold text-[#17191C] mb-4">
-                    {title || 'Sans titre'}
+                    {title || t.common.untitled}
                   </h2>
                   {featuredImageUrl && (
                     <AuthorizedMediaImage

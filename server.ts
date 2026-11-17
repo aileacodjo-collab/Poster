@@ -54,6 +54,7 @@ import {
   restorePostVersion,
   restoreWorkspaceBackup,
   revokeWorkspaceInvite,
+  sanitizeMediaFilename,
   savePostReactionsConfig,
   savePostTranslation,
   saveSeoSetting,
@@ -181,24 +182,44 @@ export async function createApp() {
   app.get(
     '/api/media/:id',
     asyncHandler(async (req: AuthRequest, res) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Vary', 'Authorization');
+      res.setHeader('Cache-Control', 'private, no-store');
+
       const id = String(req.params.id || '');
       if (!isValidParamId(id)) {
         res.status(400).json({ error: 'Identifiant média invalide.' });
         return;
       }
       try {
-        const asset = await getRepository().get<MediaAsset>(`mediaAssets/${id}`);
+        const asset = await getRepository().get<MediaAsset & { deletedAt?: string }>(`mediaAssets/${id}`);
         let isPublic = false;
-        if (asset && asset.storagePath) {
-          assertValidWorkspaceMediaStoragePath(asset.storagePath, asset.workspaceId, asset.id);
-          isPublic = await isMediaAssetPubliclyReferenced(asset);
+        let hasValidAssetRecord = false;
+        if (asset && asset.id === id && asset.workspaceId && asset.storagePath && !asset.deletedAt) {
+          try {
+            assertValidWorkspaceMediaStoragePath(asset.storagePath, asset.workspaceId, asset.id);
+            hasValidAssetRecord = true;
+            isPublic = await isMediaAssetPubliclyReferenced(asset);
+          } catch {
+            hasValidAssetRecord = false;
+            isPublic = false;
+          }
         }
 
         if (!isPublic) {
           const ok = await verifyBearerToken(req, res);
           if (!ok || !req.user) return;
-          if (!asset || !asset.storagePath) {
+          if (!asset || asset.id !== id || !asset.storagePath || asset.deletedAt) {
             res.status(404).json({ error: 'Média introuvable.' });
+            return;
+          }
+          const requestedWsHeader = req.headers['x-workspace-id'];
+          if (
+            typeof requestedWsHeader === 'string' &&
+            requestedWsHeader.trim() !== '' &&
+            requestedWsHeader.trim() !== asset.workspaceId
+          ) {
+            res.status(403).json({ error: 'Accès refusé.' });
             return;
           }
           try {
@@ -209,33 +230,47 @@ export async function createApp() {
             });
           } catch (memberErr) {
             if (memberErr instanceof RepositoryError && memberErr.code === 'PERMISSION_DENIED') {
-              res.status(404).json({ error: 'Média introuvable.' });
+              res.status(403).json({ error: 'Accès refusé.' });
               return;
             }
             throw memberErr;
           }
         }
 
-        if (!asset || !asset.storagePath) {
+        if (!asset || asset.id !== id || !asset.storagePath || asset.deletedAt || !hasValidAssetRecord) {
           res.status(404).json({ error: 'Média introuvable.' });
           return;
         }
 
+        assertValidWorkspaceMediaStoragePath(asset.storagePath, asset.workspaceId, asset.id);
+
         const allowedMimes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
         const safeMime = allowedMimes.has(asset.mimeType) ? asset.mimeType : 'application/octet-stream';
-        const buffer = await readMediaAssetBuffer(asset);
+        const buffer = await readMediaAssetBuffer(asset, { expectedWorkspaceId: asset.workspaceId });
         if (!buffer) {
           res.status(404).json({ error: 'Fichier média introuvable.' });
           return;
         }
         res.setHeader('Content-Type', safeMime);
         res.setHeader('X-Content-Type-Options', 'nosniff');
-        res.setHeader(
-          'Cache-Control',
-          isPublic ? 'public, max-age=60, must-revalidate' : 'private, no-store'
-        );
+        res.setHeader('Vary', 'Authorization');
+
+        if (isPublic) {
+          const versionHash = crypto.createHash('sha256').update(buffer).digest('hex').slice(0, 24);
+          const versionTag = `"v1-${versionHash}"`;
+          res.setHeader('ETag', versionTag);
+          res.setHeader('Cache-Control', 'public, max-age=60, must-revalidate');
+          if (req.headers['if-none-match'] === versionTag) {
+            res.status(304).end();
+            return;
+          }
+        } else {
+          res.setHeader('Cache-Control', 'private, no-store');
+          res.setHeader('Pragma', 'no-cache');
+        }
         res.send(buffer);
       } catch (err) {
+        res.setHeader('Cache-Control', 'private, no-store');
         sendRouteError(res, err, 'Erreur lors du chargement du média.', 500);
       }
     })
@@ -328,6 +363,10 @@ export async function createApp() {
         }
       }
 
+      const rawReactionErr = req.query.reaction_error;
+      const reactionError: 'rate_limit' | 'session' | null =
+        rawReactionErr === 'rate_limit' || rawReactionErr === 'session' ? rawReactionErr : null;
+
       const activeReactionKeys = await getVisitorReactionsForPost(found.bundle.post.id, visitorHash);
       const html = renderPublicPostHtml({
         baseUrl,
@@ -335,7 +374,9 @@ export async function createApp() {
         bundle: found.bundle,
         locale,
         category: found.category,
+        tags: found.tags,
         activeReactionKeys,
+        reactionError,
         relatedPosts: found.relatedPosts,
       });
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -410,6 +451,7 @@ export async function createApp() {
         reactions: found.bundle.reactions.filter((r) => r.enabled),
         activeReactionKeys,
         category: found.category,
+        tags: found.tags,
         relatedPosts: found.relatedPosts,
       });
       } catch (err) {
@@ -1454,18 +1496,21 @@ export async function createApp() {
       const assetId = `med_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
 
       try {
+        const safeFilename = sanitizeMediaFilename(parsed.data.filename, parsed.data.mimeType, assetId);
         const storagePath = await uploadMediaAssetToStorage({
           workspaceId: req.workspaceId!,
           assetId,
+          filename: safeFilename,
           ext,
           mimeType: parsed.data.mimeType,
           buffer,
+          actorId: req.user!.uid,
         });
 
         const asset: MediaAsset = {
           id: assetId,
           workspaceId: req.workspaceId!,
-          filename: parsed.data.filename.replace(/[^a-zA-Z0-9._-]/g, '_'),
+          filename: safeFilename,
           mimeType: parsed.data.mimeType,
           sizeBytes: buffer.length,
           url: `/api/media/${assetId}`,
@@ -1779,6 +1824,10 @@ export async function createApp() {
       }
     })
   );
+
+  app.all('/api/*', (_req, res) => {
+    res.status(404).json({ error: 'Endpoint introuvable.' });
+  });
 
   // Centralized Express error boundary (catches malformed JSON payloads & unhandled async errors)
   app.use((err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {

@@ -35,6 +35,8 @@ export function ReactionStudioModule({ selectedPostId, onSelectPost }: ReactionS
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
+  const [confirmDeletePresetId, setConfirmDeletePresetId] = useState<string | null>(null);
+
   const [newKey, setNewKey] = useState('');
   const [newEmoji, setNewEmoji] = useState('💡');
   const [newLabelFr, setNewLabelFr] = useState('');
@@ -60,7 +62,7 @@ export function ReactionStudioModule({ selectedPostId, onSelectPost }: ReactionS
     setReactionLimit(activeBundle.post.reactionLimit || 1);
     setAllowReactionChange(activeBundle.post.allowReactionChange ?? true);
     setFeedback(null);
-  }, [activeBundle?.post.id]);
+  }, [activeBundle?.post.id, activeBundle?.post.updatedAt]);
 
   const moveReaction = (idx: number, dir: -1 | 1) => {
     const nextIdx = idx + dir;
@@ -74,7 +76,7 @@ export function ReactionStudioModule({ selectedPostId, onSelectPost }: ReactionS
   const handleAddToPost = () => {
     const cleanKey = newKey.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
     if (!cleanKey || reactions.some((r) => r.semanticKey === cleanKey)) {
-      setFeedback('Clé sémantique requise et unique.');
+      setFeedback(t.reactions.keyRequiredUnique);
       return;
     }
     setReactions((prev) => [
@@ -123,7 +125,7 @@ export function ReactionStudioModule({ selectedPostId, onSelectPost }: ReactionS
       setPosts((prev) => prev.map((b) => (b.post.id === res.bundle.post.id ? res.bundle : b)));
       setFeedback(t.common.saved);
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Erreur d’enregistrement.');
+      setFeedback(err instanceof Error ? err.message : t.common.saveError);
     } finally {
       setSaving(false);
     }
@@ -144,9 +146,20 @@ export function ReactionStudioModule({ selectedPostId, onSelectPost }: ReactionS
         const filtered = prev.filter((p) => p.id !== res.preset.id);
         return [...filtered, res.preset].sort((a, b) => a.displayOrder - b.displayOrder);
       });
-      setFeedback(`Modèle "${item.semanticKey}" enregistré.`);
+      setFeedback(`${t.reactions.presetSaved} (${item.semanticKey})`);
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Erreur modèle.');
+      setFeedback(err instanceof Error ? err.message : t.common.saveError);
+    }
+  };
+
+  const handleDeletePreset = async (presetId: string) => {
+    try {
+      await apiRequest(`/api/admin/presets/${presetId}`, { method: 'DELETE' });
+      setPresets((prev) => prev.filter((p) => p.id !== presetId));
+      setConfirmDeletePresetId(null);
+      setFeedback(t.reactions.presetDeleted);
+    } catch (err) {
+      setFeedback(err instanceof Error ? err.message : t.common.deleteError);
     }
   };
 
@@ -184,7 +197,7 @@ export function ReactionStudioModule({ selectedPostId, onSelectPost }: ReactionS
         >
           {posts.map((b) => (
             <option key={b.post.id} value={b.post.id}>
-              {b.translations[b.post.primaryLocale]?.title || b.translations.fr?.title || 'Sans titre'}
+              {b.translations[b.post.primaryLocale]?.title || b.translations.fr?.title || t.common.untitled}
             </option>
           ))}
         </select>
@@ -242,7 +255,12 @@ export function ReactionStudioModule({ selectedPostId, onSelectPost }: ReactionS
           </div>
 
           <div className="space-y-3">
-            {reactions.map((item, idx) => (
+            {reactions.length === 0 ? (
+              <div className="p-6 rounded-[12px] border border-dashed border-[#DFE5EC] text-center text-sm text-[#525866]">
+                {t.reactions.noPostReactions}
+              </div>
+            ) : (
+              reactions.map((item, idx) => (
               <div
                 key={item.semanticKey}
                 className="p-4 rounded-[12px] border border-[#DFE5EC] bg-white space-y-3"
@@ -267,7 +285,7 @@ export function ReactionStudioModule({ selectedPostId, onSelectPost }: ReactionS
                         {item.semanticKey}
                       </div>
                       <div className="text-xs text-[#525866] font-mono-tabular">
-                        Votes persistés : {item.count}
+                        {t.reactions.persistedVotes} : {item.count}
                       </div>
                     </div>
                   </div>
@@ -294,7 +312,7 @@ export function ReactionStudioModule({ selectedPostId, onSelectPost }: ReactionS
                           type="button"
                           onClick={() => moveReaction(idx, -1)}
                           className="clay-btn-secondary min-w-[48px] px-0"
-                          aria-label="Monter"
+                          aria-label={t.reactions.moveUp}
                         >
                           <ArrowUp className="w-4 h-4" />
                         </button>
@@ -302,7 +320,7 @@ export function ReactionStudioModule({ selectedPostId, onSelectPost }: ReactionS
                           type="button"
                           onClick={() => moveReaction(idx, 1)}
                           className="clay-btn-secondary min-w-[48px] px-0"
-                          aria-label="Descendre"
+                          aria-label={t.reactions.moveDown}
                         >
                           <ArrowDown className="w-4 h-4" />
                         </button>
@@ -311,7 +329,7 @@ export function ReactionStudioModule({ selectedPostId, onSelectPost }: ReactionS
                           onClick={() => handleSaveAsPreset(item)}
                           className="clay-btn-secondary text-xs"
                         >
-                          Modèle
+                          {t.reactions.saveAsPreset}
                         </button>
                         <button
                           type="button"
@@ -331,7 +349,7 @@ export function ReactionStudioModule({ selectedPostId, onSelectPost }: ReactionS
                 <div className="grid sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-[#525866] mb-1">
-                      Libellé FR
+                      {t.reactions.labelFr}
                     </label>
                     <input
                       type="text"
@@ -350,7 +368,7 @@ export function ReactionStudioModule({ selectedPostId, onSelectPost }: ReactionS
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-[#525866] mb-1">
-                      Label EN
+                      {t.reactions.labelEn}
                     </label>
                     <input
                       type="text"
@@ -369,7 +387,7 @@ export function ReactionStudioModule({ selectedPostId, onSelectPost }: ReactionS
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-[#525866] mb-1">
-                      Nyǐkɔ FON
+                      {t.reactions.labelFon}
                     </label>
                     <input
                       type="text"
@@ -388,7 +406,8 @@ export function ReactionStudioModule({ selectedPostId, onSelectPost }: ReactionS
                   </div>
                 </div>
               </div>
-            ))}
+            ))
+            )}
           </div>
 
           {canEdit && (
@@ -399,35 +418,35 @@ export function ReactionStudioModule({ selectedPostId, onSelectPost }: ReactionS
                   type="text"
                   value={newEmoji}
                   onChange={(e) => setNewEmoji(e.target.value)}
-                  placeholder="Emoji"
+                  placeholder={t.reactions.emoji}
                   className="clay-input text-center text-lg"
                 />
                 <input
                   type="text"
                   value={newKey}
                   onChange={(e) => setNewKey(e.target.value)}
-                  placeholder="clé (ex: insight)"
+                  placeholder={t.reactions.keyPlaceholder}
                   className="clay-input font-mono-tabular text-sm"
                 />
                 <input
                   type="text"
                   value={newLabelFr}
                   onChange={(e) => setNewLabelFr(e.target.value)}
-                  placeholder="Français"
+                  placeholder={t.reactions.labelFr}
                   className="clay-input text-sm"
                 />
                 <input
                   type="text"
                   value={newLabelEn}
                   onChange={(e) => setNewLabelEn(e.target.value)}
-                  placeholder="English"
+                  placeholder={t.reactions.labelEn}
                   className="clay-input text-sm"
                 />
                 <input
                   type="text"
                   value={newLabelFon}
                   onChange={(e) => setNewLabelFon(e.target.value)}
-                  placeholder="Fɔngbè"
+                  placeholder={t.reactions.labelFon}
                   className="clay-input text-sm"
                 />
               </div>
@@ -443,31 +462,67 @@ export function ReactionStudioModule({ selectedPostId, onSelectPost }: ReactionS
         <div className="clay-card p-6 space-y-4 h-fit">
           <h2 className="text-lg font-bold text-[#17191C]">{t.reactions.presetsTitle}</h2>
           <div className="space-y-2.5">
-            {presets.map((p) => (
-              <div
-                key={p.id}
-                className="p-3.5 rounded-[12px] border border-[#DFE5EC] flex items-center justify-between gap-3"
-              >
-                <div className="min-w-0">
-                  <div className="font-semibold text-[#17191C] flex items-center gap-2">
-                    <span className="text-lg">{p.emoji}</span>
-                    <span className="font-mono-tabular text-xs">{p.semanticKey}</span>
+            {presets.length === 0 ? (
+              <p className="text-sm text-[#525866]">{t.reactions.noPresets}</p>
+            ) : (
+              presets.map((p) => (
+                <div
+                  key={p.id}
+                  className="p-3.5 rounded-[12px] border border-[#DFE5EC] flex items-center justify-between gap-2"
+                >
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[#17191C] flex items-center gap-2">
+                      <span className="text-lg">{p.emoji}</span>
+                      <span className="font-mono-tabular text-xs">{p.semanticKey}</span>
+                    </div>
+                    <div className="text-xs text-[#525866] mt-0.5 truncate">
+                      {p.labels.fr} · {p.labels.en} · {p.labels.fon}
+                    </div>
                   </div>
-                  <div className="text-xs text-[#525866] mt-0.5 truncate">
-                    {p.labels.fr} · {p.labels.en} · {p.labels.fon}
-                  </div>
+                  {canEdit && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      {confirmDeletePresetId === p.id ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePreset(p.id)}
+                            className="min-h-[36px] px-2.5 rounded-[8px] bg-red-600 text-white text-xs font-semibold cursor-pointer"
+                          >
+                            {t.common.confirm}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeletePresetId(null)}
+                            className="min-h-[36px] px-2 rounded-[8px] border border-[#DFE5EC] text-xs font-semibold text-[#525866] cursor-pointer"
+                          >
+                            {t.common.cancel}
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleApplyPreset(p)}
+                            aria-label={`${t.reactions.addReaction}: ${p.semanticKey}`}
+                            className="clay-btn-secondary text-xs min-h-[40px] px-3"
+                          >
+                            +
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeletePresetId(p.id)}
+                            aria-label={`${t.common.delete} ${p.semanticKey}`}
+                            className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-[8px] text-red-700 hover:bg-red-50 cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
-                {canEdit && (
-                  <button
-                    type="button"
-                    onClick={() => handleApplyPreset(p)}
-                    className="clay-btn-secondary text-xs min-h-[40px] px-3"
-                  >
-                    +
-                  </button>
-                )}
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>

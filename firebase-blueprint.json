@@ -175,6 +175,7 @@
         "status": { "type": "string", "enum": ["published", "unpublished"] },
         "versionNumber": { "type": "integer" },
         "categorySnapshot": { "type": ["object", "null"] },
+        "tagsSnapshot": { "type": "array", "items": { "type": "object" } },
         "publishedAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },

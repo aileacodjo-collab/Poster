@@ -49,12 +49,16 @@ describe('Firebase Storage Security Rules — Private-by-Default Zero-Trust (RED
       .storage();
 
     const sampleBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-    const targetPath = 'workspaces/ws_a/media/med_test.png';
+    const canonicalPath = 'workspaces/ws_a/media/med_test/cover.png';
+    const legacyPath = 'workspaces/ws_a/media/med_test.png';
 
-    await assertFails(uploadBytes(ref(anonStorage, targetPath), sampleBytes));
-    await assertFails(getBytes(ref(anonStorage, targetPath)));
+    await assertFails(uploadBytes(ref(anonStorage, canonicalPath), sampleBytes));
+    await assertFails(getBytes(ref(anonStorage, canonicalPath)));
 
-    await assertFails(uploadBytes(ref(authStorage, targetPath), sampleBytes));
-    await assertFails(getBytes(ref(authStorage, targetPath)));
+    await assertFails(uploadBytes(ref(authStorage, canonicalPath), sampleBytes));
+    await assertFails(getBytes(ref(authStorage, canonicalPath)));
+
+    await assertFails(uploadBytes(ref(authStorage, legacyPath), sampleBytes));
+    await assertFails(getBytes(ref(authStorage, legacyPath)));
   });
 });

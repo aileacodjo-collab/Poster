@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext.tsx';
 import { useI18n } from '../contexts/I18nContext.tsx';
 import { apiRequest } from '../lib/api.ts';
 import { LOCALE_META } from '../shared/i18n.ts';
+import { generateSlug } from '../shared/markdown.ts';
 import {
   AuditLog,
   Locale,
@@ -21,6 +22,7 @@ export function SettingsModule() {
 
   const [brandName, setBrandName] = useState(workspace?.brandName || '');
   const [name, setName] = useState(workspace?.name || '');
+  const [slug, setSlug] = useState(workspace?.slug || '');
   const [defaultLocale, setDefaultLocale] = useState<Locale>(workspace?.defaultLocale || 'fr');
   const [baseUrl, setBaseUrl] = useState(workspace?.baseUrl || '');
 
@@ -28,16 +30,27 @@ export function SettingsModule() {
   const [inviteRole, setInviteRole] = useState<'editor' | 'reviewer' | 'viewer'>('editor');
   const [issuedToken, setIssuedToken] = useState<string | null>(null);
 
-  const [acceptWorkspaceId, setAcceptWorkspaceId] = useState('');
-  const [acceptToken, setAcceptToken] = useState('');
+  const [acceptWorkspaceId, setAcceptWorkspaceId] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('workspaceId') || '';
+  });
+  const [acceptToken, setAcceptToken] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('inviteToken') || '';
+  });
 
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [logsError, setLogsError] = useState<string | null>(null);
+  const [confirmMemberId, setConfirmMemberId] = useState<string | null>(null);
+  const [confirmInviteId, setConfirmInviteId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   useEffect(() => {
     if (workspace) {
       setBrandName(workspace.brandName);
       setName(workspace.name);
+      setSlug(workspace.slug);
       setDefaultLocale(workspace.defaultLocale);
       setBaseUrl(workspace.baseUrl);
     }
@@ -46,31 +59,47 @@ export function SettingsModule() {
   useEffect(() => {
     if (!canViewAuditLogs) {
       setAuditLogs([]);
+      setLogsError(null);
       return;
     }
+    let active = true;
+    setLoadingLogs(true);
+    setLogsError(null);
     apiRequest<{ logs: AuditLog[] }>('/api/admin/audit-logs')
-      .then((res) => setAuditLogs(res.logs))
-      .catch(() => {});
-  }, [canViewAuditLogs]);
+      .then((res) => {
+        if (active) setAuditLogs(res.logs);
+      })
+      .catch((err) => {
+        if (active) setLogsError(err instanceof Error ? err.message : t.common.loadError);
+      })
+      .finally(() => {
+        if (active) setLoadingLogs(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [canViewAuditLogs, workspace?.id, t.common.loadError]);
 
   const handleSaveWorkspace = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isOwner) return;
+    setFeedback(null);
     try {
       const res = await apiRequest<{ workspace: Workspace }>('/api/admin/workspace', {
         method: 'PATCH',
-        body: { brandName, name, defaultLocale, baseUrl },
+        body: { brandName, name, slug: generateSlug(slug), defaultLocale, baseUrl },
       });
       setWorkspace(res.workspace);
       setFeedback(t.common.saved);
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Erreur d’enregistrement.');
+      setFeedback(err instanceof Error ? err.message : t.common.saveError);
     }
   };
 
   const handleCreateInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isOwner || !inviteEmail.trim()) return;
+    setFeedback(null);
     try {
       const res = await apiRequest<{ invite: WorkspaceInvite; rawToken: string }>('/api/admin/invites', {
         method: 'POST',
@@ -79,9 +108,9 @@ export function SettingsModule() {
       setInvites((prev) => [res.invite, ...prev]);
       setIssuedToken(res.rawToken);
       setInviteEmail('');
-      setFeedback(`Invitation sécurisée générée pour ${res.invite.email} (valable 72 h, usage unique).`);
+      setFeedback(`${t.settings.inviteCreated} ${res.invite.email}`);
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Invitation refusée.');
+      setFeedback(err instanceof Error ? err.message : t.common.requestError);
     }
   };
 
@@ -91,15 +120,17 @@ export function SettingsModule() {
       setInvites((prev) =>
         prev.map((inv) => (inv.id === inviteId ? { ...inv, status: 'revoked' } : inv))
       );
-      setFeedback('Invitation révoquée.');
+      setConfirmInviteId(null);
+      setFeedback(t.settings.inviteRevoked);
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Révocation impossible.');
+      setFeedback(err instanceof Error ? err.message : t.common.requestError);
     }
   };
 
   const handleAcceptInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!acceptWorkspaceId.trim() || !acceptToken.trim()) return;
+    setFeedback(null);
     try {
       const res = await apiRequest<{ workspace: Workspace }>('/api/admin/invites/accept', {
         method: 'POST',
@@ -108,9 +139,9 @@ export function SettingsModule() {
       setAcceptWorkspaceId('');
       setAcceptToken('');
       await refreshWorkspace(res.workspace.id);
-      setFeedback(`Vous avez rejoint l’espace "${res.workspace.name}".`);
+      setFeedback(`${t.settings.joinedWorkspace} (${res.workspace.name})`);
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Acceptation refusée.');
+      setFeedback(err instanceof Error ? err.message : t.studio.onboardingInviteError);
     }
   };
 
@@ -121,9 +152,9 @@ export function SettingsModule() {
         body: { role: nextRole },
       });
       setMembers((prev) => prev.map((m) => (m.id === memberId ? res.member : m)));
-      setFeedback(`Rôle mis à jour pour ${res.member.email}.`);
+      setFeedback(`${t.settings.roleUpdated} (${res.member.email})`);
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Mise à jour du rôle impossible.');
+      setFeedback(err instanceof Error ? err.message : t.common.saveError);
     }
   };
 
@@ -131,8 +162,10 @@ export function SettingsModule() {
     try {
       await apiRequest(`/api/admin/members/${memberId}`, { method: 'DELETE' });
       setMembers((prev) => prev.filter((m) => m.id !== memberId));
+      setConfirmMemberId(null);
+      setFeedback(t.settings.revokedAction);
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Suppression impossible.');
+      setFeedback(err instanceof Error ? err.message : t.common.deleteError);
     }
   };
 
@@ -149,12 +182,13 @@ export function SettingsModule() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Export impossible.');
+      setFeedback(err instanceof Error ? err.message : t.common.requestError);
     }
   };
 
   const handleRestoreBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
     const reader = new FileReader();
     reader.onload = async () => {
@@ -165,10 +199,13 @@ export function SettingsModule() {
           body: parsed,
         });
         await refreshWorkspace();
-        setFeedback(`Restauration terminée : ${res.restoredCount} documents restaurés.`);
+        setFeedback(t.settings.restoreSuccess.replace('{count}', String(res.restoredCount)));
       } catch (err) {
-        setFeedback(err instanceof Error ? err.message : 'Fichier de sauvegarde invalide.');
+        setFeedback(err instanceof Error ? err.message : t.settings.restoreInvalid);
       }
+    };
+    reader.onerror = () => {
+      setFeedback(t.settings.restoreInvalid);
     };
     reader.readAsText(file, 'utf-8');
   };
@@ -190,7 +227,9 @@ export function SettingsModule() {
         <form onSubmit={handleSaveWorkspace} className="clay-card p-6 space-y-4">
           <h2 className="text-lg font-bold text-[#17191C]">{t.settings.workspace}</h2>
           <div>
-            <label className="block text-xs font-semibold text-[#525866] mb-1">Nom de la revue</label>
+            <label className="block text-xs font-semibold text-[#525866] mb-1">
+              {t.settings.brandNameLabel}
+            </label>
             <input
               type="text"
               disabled={!isOwner}
@@ -199,20 +238,36 @@ export function SettingsModule() {
               className="clay-input"
             />
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-[#525866] mb-1">Nom de l’espace</label>
-            <input
-              type="text"
-              disabled={!isOwner}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="clay-input"
-            />
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-[#525866] mb-1">
+                {t.settings.workspaceNameLabel}
+              </label>
+              <input
+                type="text"
+                disabled={!isOwner}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="clay-input"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-[#525866] mb-1">
+                {t.settings.workspaceSlugLabel}
+              </label>
+              <input
+                type="text"
+                disabled={!isOwner}
+                value={slug}
+                onChange={(e) => setSlug(generateSlug(e.target.value))}
+                className="clay-input font-mono-tabular text-sm"
+              />
+            </div>
           </div>
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-[#525866] mb-1">
-                Langue par défaut
+                {t.settings.defaultLocaleLabel}
               </label>
               <select
                 disabled={!isOwner}
@@ -228,12 +283,15 @@ export function SettingsModule() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#525866] mb-1">URL publique</label>
+              <label className="block text-xs font-semibold text-[#525866] mb-1">
+                {t.settings.publicUrlLabel}
+              </label>
               <input
                 type="text"
                 disabled={!isOwner}
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder="https://example.org"
                 className="clay-input font-mono-tabular text-sm"
               />
             </div>
@@ -255,7 +313,7 @@ export function SettingsModule() {
                 type="email"
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="email@domaine.org"
+                placeholder={t.settings.inviteEmailPlaceholder}
                 className="clay-input text-sm sm:col-span-2"
                 required
               />
@@ -269,7 +327,12 @@ export function SettingsModule() {
                   <option value="reviewer">reviewer</option>
                   <option value="viewer">viewer</option>
                 </select>
-                <button type="submit" className="clay-btn-secondary min-w-[48px] px-3" title="Générer une invitation">
+                <button
+                  type="submit"
+                  className="clay-btn-secondary min-w-[48px] px-3"
+                  title={t.settings.inviteButton}
+                  aria-label={t.settings.inviteButton}
+                >
                   <Plus className="w-4 h-4" />
                 </button>
               </div>
@@ -279,10 +342,10 @@ export function SettingsModule() {
           {issuedToken && workspace && (
             <div className="p-3 rounded-[12px] border border-[#006B35]/30 bg-[#E5F3EA]/70 text-xs space-y-2">
               <div className="font-semibold text-[#006B35]">
-                Jeton d’invitation à usage unique (transmettre de manière sécurisée, affiché une seule fois) :
+                {t.settings.inviteTokenOnceNotice}
               </div>
               <div className="font-mono-tabular break-all bg-white p-2 rounded-[8px] border border-[#DFE5EC] text-[#17191C]">
-                Espace: {workspace.id} | Jeton: {issuedToken}
+                {t.settings.workspaceCol}: {workspace.id} | {t.settings.tokenCol}: {issuedToken}
               </div>
               <button
                 type="button"
@@ -290,7 +353,7 @@ export function SettingsModule() {
                 className="clay-btn-secondary text-xs py-1.5 px-3"
               >
                 <Copy className="w-3.5 h-3.5" />
-                Copier le jeton
+                {t.settings.copyToken}
               </button>
             </div>
           )}
@@ -305,7 +368,7 @@ export function SettingsModule() {
                   <div className="text-xs text-[#525866]">{m.role}</div>
                 </div>
                 {isOwner && m.role !== 'owner' && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     <select
                       value={m.role}
                       onChange={(e) =>
@@ -317,13 +380,33 @@ export function SettingsModule() {
                       <option value="reviewer">reviewer</option>
                       <option value="viewer">viewer</option>
                     </select>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveMember(m.id)}
-                      className="min-h-[40px] min-w-[40px] flex items-center justify-center text-red-700 hover:bg-red-50 rounded-[8px] cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {confirmMemberId === m.id ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMember(m.id)}
+                          className="min-h-[36px] px-2.5 rounded-[8px] bg-red-600 text-white text-xs font-semibold cursor-pointer"
+                        >
+                          {t.common.confirm}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmMemberId(null)}
+                          className="min-h-[36px] px-2 rounded-[8px] border border-[#DFE5EC] text-xs font-semibold text-[#525866] cursor-pointer"
+                        >
+                          {t.common.cancel}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmMemberId(m.id)}
+                        aria-label={t.settings.confirmRemoveMember}
+                        className="min-h-[40px] min-w-[40px] flex items-center justify-center text-red-700 hover:bg-red-50 rounded-[8px] cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 )}
               </li>
@@ -332,7 +415,9 @@ export function SettingsModule() {
 
           {isOwner && invites.length > 0 && (
             <div className="pt-3 border-t border-[#DFE5EC] space-y-2">
-              <h3 className="text-xs font-bold uppercase tracking-wide text-[#525866]">Invitations</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wide text-[#525866]">
+                {t.settings.invitationsTitle}
+              </h3>
               <ul className="divide-y divide-[#DFE5EC] text-xs">
                 {invites.map((inv) => (
                   <li key={inv.id} className="py-2 flex items-center justify-between gap-2">
@@ -343,13 +428,32 @@ export function SettingsModule() {
                       </span>
                     </div>
                     {inv.status === 'pending' && (
-                      <button
-                        type="button"
-                        onClick={() => handleRevokeInvite(inv.id)}
-                        className="text-red-700 hover:underline font-medium cursor-pointer"
-                      >
-                        Révoquer
-                      </button>
+                      confirmInviteId === inv.id ? (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleRevokeInvite(inv.id)}
+                            className="px-2 py-1 rounded bg-red-600 text-white font-semibold cursor-pointer"
+                          >
+                            {t.common.confirm}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmInviteId(null)}
+                            className="px-2 py-1 rounded border border-[#DFE5EC] text-[#525866] cursor-pointer"
+                          >
+                            {t.common.cancel}
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmInviteId(inv.id)}
+                          className="text-red-700 hover:underline font-medium cursor-pointer shrink-0"
+                        >
+                          {t.common.delete}
+                        </button>
+                      )
                     )}
                   </li>
                 ))}
@@ -360,26 +464,26 @@ export function SettingsModule() {
           <form onSubmit={handleAcceptInvite} className="pt-3 border-t border-[#DFE5EC] space-y-2">
             <h3 className="text-xs font-bold uppercase tracking-wide text-[#525866] flex items-center gap-1.5">
               <KeyRound className="w-3.5 h-3.5" />
-              Rejoindre un autre espace avec un jeton
+              {t.settings.joinAnotherTitle}
             </h3>
             <div className="grid sm:grid-cols-2 gap-2">
               <input
                 type="text"
                 value={acceptWorkspaceId}
                 onChange={(e) => setAcceptWorkspaceId(e.target.value)}
-                placeholder="Identifiant de l’espace (ex: ws_...)"
+                placeholder={t.studio.workspaceIdPlaceholder}
                 className="clay-input text-xs font-mono-tabular"
               />
               <input
                 type="text"
                 value={acceptToken}
                 onChange={(e) => setAcceptToken(e.target.value)}
-                placeholder="Jeton d’invitation"
+                placeholder={t.studio.inviteTokenPlaceholder}
                 className="clay-input text-xs font-mono-tabular"
               />
             </div>
             <button type="submit" className="clay-btn-secondary text-xs">
-              Accepter l’invitation
+              {t.studio.acceptInvite}
             </button>
           </form>
         </div>
@@ -407,35 +511,45 @@ export function SettingsModule() {
         <div className="lg:col-span-2 clay-card p-6 space-y-4">
           <h2 className="text-lg font-bold text-[#17191C]">{t.settings.auditLogs}</h2>
           {canViewAuditLogs ? (
-            <div className="overflow-x-auto max-h-80 overflow-y-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-[#DFE5EC] text-[#525866]">
-                    <th className="py-2 pr-3">Date</th>
-                    <th className="py-2 px-3">Acteur</th>
-                    <th className="py-2 px-3">Action</th>
-                    <th className="py-2 pl-3">Détails</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#DFE5EC]">
-                  {auditLogs.map((log) => (
-                    <tr key={log.id}>
-                      <td className="py-2.5 pr-3 font-mono-tabular whitespace-nowrap text-[#525866]">
-                        {log.createdAt.slice(0, 16).replace('T', ' ')}
-                      </td>
-                      <td className="py-2.5 px-3 text-[#17191C]">{log.actorEmail}</td>
-                      <td className="py-2.5 px-3 font-mono-tabular font-semibold text-[#006B35]">
-                        {log.action}
-                      </td>
-                      <td className="py-2.5 pl-3 text-[#525866]">{log.details}</td>
+            logsError ? (
+              <div className="p-3 rounded-[10px] bg-red-50 border border-red-200 text-xs text-red-800">
+                {logsError}
+              </div>
+            ) : loadingLogs ? (
+              <p className="text-sm text-[#525866]">{t.common.loading}</p>
+            ) : auditLogs.length === 0 ? (
+              <p className="text-sm text-[#525866]">{t.settings.noAuditLogs}</p>
+            ) : (
+              <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-[#DFE5EC] text-[#525866]">
+                      <th className="py-2 pr-3">{t.settings.auditDate}</th>
+                      <th className="py-2 px-3">{t.settings.auditActor}</th>
+                      <th className="py-2 px-3">{t.settings.auditAction}</th>
+                      <th className="py-2 pl-3">{t.settings.auditDetails}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-[#DFE5EC]">
+                    {auditLogs.map((log) => (
+                      <tr key={log.id}>
+                        <td className="py-2.5 pr-3 font-mono-tabular whitespace-nowrap text-[#525866]">
+                          {log.createdAt.slice(0, 16).replace('T', ' ')}
+                        </td>
+                        <td className="py-2.5 px-3 text-[#17191C]">{log.actorEmail}</td>
+                        <td className="py-2.5 px-3 font-mono-tabular font-semibold text-[#006B35]">
+                          {log.action}
+                        </td>
+                        <td className="py-2.5 pl-3 text-[#525866]">{log.details}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
           ) : (
             <p className="text-sm text-[#525866]">
-              La consultation des journaux d’audit est réservée aux propriétaires et éditeurs.
+              {t.settings.auditRestrictedNote}
             </p>
           )}
         </div>

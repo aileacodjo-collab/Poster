@@ -49,7 +49,7 @@ export function SeoStudioModule({ selectedPostId, onSelectPost }: SeoStudioModul
     setSchemaType(s?.schemaType || 'BlogPosting');
     setNoIndex(Boolean(s?.noIndex));
     setFeedback(null);
-  }, [activeBundle?.post.id, seoLocale]);
+  }, [activeBundle?.post.id, activeBundle?.post.updatedAt, seoLocale]);
 
   const resolvedSeo = useMemo(() => {
     if (!activeBundle || !workspace) return null;
@@ -121,7 +121,7 @@ export function SeoStudioModule({ selectedPostId, onSelectPost }: SeoStudioModul
       setPosts((prev) => prev.map((b) => (b.post.id === res.bundle.post.id ? res.bundle : b)));
       setFeedback(t.common.saved);
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Erreur SEO.');
+      setFeedback(err instanceof Error ? err.message : t.common.saveError);
     } finally {
       setSaving(false);
     }
@@ -149,7 +149,7 @@ export function SeoStudioModule({ selectedPostId, onSelectPost }: SeoStudioModul
           >
             {posts.map((b) => (
               <option key={b.post.id} value={b.post.id}>
-                {b.translations[b.post.primaryLocale]?.title || b.translations.fr?.title || 'Sans titre'}
+                {b.translations[b.post.primaryLocale]?.title || b.translations.fr?.title || t.common.untitled}
               </option>
             ))}
           </select>
@@ -186,7 +186,7 @@ export function SeoStudioModule({ selectedPostId, onSelectPost }: SeoStudioModul
         <div className="lg:col-span-7 clay-card p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold text-[#17191C]">
-              Métadonnées ({seoLocale.toUpperCase()})
+              {t.seo.metadataHeading} ({seoLocale.toUpperCase()})
             </h2>
             {canEdit && (
               <button
@@ -254,7 +254,7 @@ export function SeoStudioModule({ selectedPostId, onSelectPost }: SeoStudioModul
                 onChange={(e) => setOgImageUrl(e.target.value)}
                 className="clay-input text-sm"
               >
-                <option value="">Aucune</option>
+                <option value="">{t.common.none}</option>
                 {mediaAssets.map((m) => (
                   <option key={m.id} value={m.url}>
                     {m.filename}
@@ -302,7 +302,7 @@ export function SeoStudioModule({ selectedPostId, onSelectPost }: SeoStudioModul
                 onChange={(e) => setNoIndex(e.target.checked)}
                 className="w-5 h-5 accent-[#006B35]"
               />
-              <span className="text-sm font-semibold text-[#17191C]">noindex</span>
+              <span className="text-sm font-semibold text-[#17191C]">{t.seo.noindexLabel}</span>
             </label>
           </div>
         </div>
@@ -312,7 +312,7 @@ export function SeoStudioModule({ selectedPostId, onSelectPost }: SeoStudioModul
           {resolvedSeo && (
             <>
               <div className="clay-card p-5 space-y-2">
-                <div className="text-xs font-semibold text-[#525866]">SERP & OpenGraph</div>
+                <div className="text-xs font-semibold text-[#525866]">{t.seo.serpPreviewHeading}</div>
                 <div className="text-xs text-[#006B35] font-mono-tabular truncate">
                   {resolvedSeo.canonicalUrl}
                 </div>
@@ -322,11 +322,11 @@ export function SeoStudioModule({ selectedPostId, onSelectPost }: SeoStudioModul
 
               <div className="clay-card p-5 space-y-2">
                 <div className="text-xs font-semibold text-[#525866]">
-                  hreflang (FR / EN uniquement)
+                  {t.seo.hreflangHeading}
                 </div>
                 {resolvedSeo.hreflangs.length === 0 ? (
                   <p className="text-xs text-[#525866]">
-                    Aucune balise hreflang émise pour {seoLocale.toUpperCase()} (conforme aux règles de langue).
+                    {t.seo.noHreflangNote}
                   </p>
                 ) : (
                   <ul className="space-y-1 text-xs font-mono-tabular text-[#17191C]">

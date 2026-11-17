@@ -127,6 +127,7 @@ export interface PublishedPostSnapshot {
   seo: Record<Locale, SEOSetting | null>;
   reactions?: PostReaction[];
   categorySnapshot?: Category | null;
+  tagsSnapshot?: Tag[];
   publishedAt: string;
   updatedAt: string;
 }

@@ -19,11 +19,13 @@ export function ContentLibraryModule() {
   const [tagEn, setTagEn] = useState('');
   const [tagFon, setTagFon] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!catFr.trim()) return;
+    setFeedback(null);
     try {
       const res = await apiRequest<{ category: Category }>('/api/admin/categories', {
         method: 'POST',
@@ -41,18 +43,24 @@ export function ContentLibraryModule() {
       setCatEn('');
       setCatFon('');
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Erreur catégorie.');
+      setFeedback(err instanceof Error ? err.message : t.common.saveError);
     }
   };
 
   const handleDeleteCategory = async (id: string) => {
-    await apiRequest(`/api/admin/categories/${id}`, { method: 'DELETE' });
-    setCategories((prev) => prev.filter((c) => c.id !== id));
+    try {
+      await apiRequest(`/api/admin/categories/${id}`, { method: 'DELETE' });
+      setCategories((prev) => prev.filter((c) => c.id !== id));
+      setConfirmDeleteKey(null);
+    } catch (err) {
+      setFeedback(err instanceof Error ? err.message : t.common.deleteError);
+    }
   };
 
   const handleAddTag = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tagFr.trim()) return;
+    setFeedback(null);
     try {
       const res = await apiRequest<{ tag: Tag }>('/api/admin/tags', {
         method: 'POST',
@@ -70,18 +78,35 @@ export function ContentLibraryModule() {
       setTagEn('');
       setTagFon('');
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Erreur étiquette.');
+      setFeedback(err instanceof Error ? err.message : t.common.saveError);
     }
   };
 
   const handleDeleteTag = async (id: string) => {
-    await apiRequest(`/api/admin/tags/${id}`, { method: 'DELETE' });
-    setTags((prev) => prev.filter((x) => x.id !== id));
+    try {
+      await apiRequest(`/api/admin/tags/${id}`, { method: 'DELETE' });
+      setTags((prev) => prev.filter((x) => x.id !== id));
+      setConfirmDeleteKey(null);
+    } catch (err) {
+      setFeedback(err instanceof Error ? err.message : t.common.deleteError);
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
+
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      setFeedback(t.library.invalidImageType);
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setFeedback(t.library.imageTooLarge);
+      return;
+    }
+
     setUploading(true);
     setFeedback(null);
 
@@ -98,12 +123,16 @@ export function ContentLibraryModule() {
           },
         });
         setMediaAssets((prev) => [res.asset, ...prev]);
-        setFeedback(`Média "${res.asset.filename}" téléversé.`);
+        setFeedback(`${t.library.uploadSuccess} (${res.asset.filename})`);
       } catch (err) {
-        setFeedback(err instanceof Error ? err.message : 'Téléversement refusé.');
+        setFeedback(err instanceof Error ? err.message : t.library.uploadError);
       } finally {
         setUploading(false);
       }
+    };
+    reader.onerror = () => {
+      setUploading(false);
+      setFeedback(t.library.uploadError);
     };
     reader.readAsDataURL(file);
   };
@@ -112,16 +141,17 @@ export function ContentLibraryModule() {
     const alt = asset.altText[locale] || asset.filename;
     const md = `![${alt}](${asset.url})`;
     navigator.clipboard?.writeText(md);
-    setFeedback(`Markdown copié : ${md}`);
+    setFeedback(`${t.library.markdownCopied} ${md}`);
   };
 
   const handleDeleteMedia = async (asset: MediaAsset) => {
     try {
       await apiRequest(`/api/admin/media/${asset.id}`, { method: 'DELETE' });
       setMediaAssets((prev) => prev.filter((m) => m.id !== asset.id));
-      setFeedback(`Média "${asset.filename}" supprimé.`);
+      setConfirmDeleteKey(null);
+      setFeedback(`${t.common.delete}: ${asset.filename}`);
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Suppression média impossible.');
+      setFeedback(err instanceof Error ? err.message : t.common.deleteError);
     }
   };
 
@@ -155,47 +185,74 @@ export function ContentLibraryModule() {
           )}
         </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {mediaAssets.map((asset) => (
-            <div key={asset.id} className="rounded-[12px] border border-[#DFE5EC] overflow-hidden bg-white">
-              <div className="aspect-video bg-[#E5F3EA]">
-                <AuthorizedMediaImage
-                  src={asset.url}
-                  alt={asset.altText[locale] || asset.filename}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="p-3.5 flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold text-[#17191C] truncate">{asset.filename}</div>
-                  <div className="text-xs text-[#525866] font-mono-tabular">
-                    {Math.round(asset.sizeBytes / 1024)} Ko
+        {mediaAssets.length === 0 ? (
+          <p className="text-sm text-[#525866] py-4">{t.library.noMedia}</p>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {mediaAssets.map((asset) => {
+              const delKey = `media:${asset.id}`;
+              return (
+                <div key={asset.id} className="rounded-[12px] border border-[#DFE5EC] overflow-hidden bg-white">
+                  <div className="aspect-video bg-[#E5F3EA]">
+                    <AuthorizedMediaImage
+                      src={asset.url}
+                      alt={asset.altText[locale] || asset.filename}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="p-3.5 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-[#17191C] truncate">{asset.filename}</div>
+                      <div className="text-xs text-[#525866] font-mono-tabular">
+                        {Math.round(asset.sizeBytes / 1024)} {t.common.kilobytes}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => copyMarkdownSnippet(asset)}
+                        aria-label={`${t.library.copyMarkdown} ${asset.filename}`}
+                        className="clay-btn-secondary min-h-[40px] px-3 text-xs"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        MD
+                      </button>
+                      {canEdit && (
+                        confirmDeleteKey === delKey ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteMedia(asset)}
+                              className="min-h-[36px] px-2.5 rounded-[8px] bg-red-600 text-white text-xs font-semibold cursor-pointer"
+                            >
+                              {t.common.confirm}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteKey(null)}
+                              className="min-h-[36px] px-2 rounded-[8px] border border-[#DFE5EC] text-xs font-semibold text-[#525866] cursor-pointer"
+                            >
+                              {t.common.cancel}
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteKey(delKey)}
+                            aria-label={`${t.common.delete} ${asset.filename}`}
+                            className="min-h-[40px] min-w-[40px] flex items-center justify-center text-red-700 hover:bg-red-50 rounded-[8px] cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => copyMarkdownSnippet(asset)}
-                    className="clay-btn-secondary min-h-[40px] px-3 text-xs"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    MD
-                  </button>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteMedia(asset)}
-                      aria-label={`Supprimer ${asset.filename}`}
-                      className="min-h-[40px] min-w-[40px] flex items-center justify-center text-red-700 hover:bg-red-50 rounded-[8px] cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Categories & Tags */}
@@ -232,27 +289,54 @@ export function ContentLibraryModule() {
               </button>
             </form>
           )}
-          <ul className="divide-y divide-[#DFE5EC]">
-            {categories.map((cat) => (
-              <li key={cat.id} className="py-3 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-[#17191C]">
-                    {cat.names.fr} · {cat.names.en} · {cat.names.fon}
-                  </div>
-                  <div className="text-xs font-mono-tabular text-[#525866]">{cat.slug}</div>
-                </div>
-                {canEdit && (
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteCategory(cat.id)}
-                    className="min-h-[40px] min-w-[40px] flex items-center justify-center text-red-700 hover:bg-red-50 rounded-[8px] cursor-pointer"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
+          {categories.length === 0 ? (
+            <p className="text-sm text-[#525866]">{t.library.noCategories}</p>
+          ) : (
+            <ul className="divide-y divide-[#DFE5EC]">
+              {categories.map((cat) => {
+                const delKey = `cat:${cat.id}`;
+                return (
+                  <li key={cat.id} className="py-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-[#17191C]">
+                        {cat.names.fr} · {cat.names.en} · {cat.names.fon}
+                      </div>
+                      <div className="text-xs font-mono-tabular text-[#525866]">{cat.slug}</div>
+                    </div>
+                    {canEdit && (
+                      confirmDeleteKey === delKey ? (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCategory(cat.id)}
+                            className="min-h-[36px] px-2.5 rounded-[8px] bg-red-600 text-white text-xs font-semibold cursor-pointer"
+                          >
+                            {t.common.confirm}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteKey(null)}
+                            className="min-h-[36px] px-2 rounded-[8px] border border-[#DFE5EC] text-xs font-semibold text-[#525866] cursor-pointer"
+                          >
+                            {t.common.cancel}
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteKey(delKey)}
+                          aria-label={`${t.common.delete} ${cat.slug}`}
+                          className="min-h-[40px] min-w-[40px] flex items-center justify-center text-red-700 hover:bg-red-50 rounded-[8px] cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
 
         <div className="clay-card p-6 space-y-4">
@@ -287,27 +371,54 @@ export function ContentLibraryModule() {
               </button>
             </form>
           )}
-          <ul className="divide-y divide-[#DFE5EC]">
-            {tags.map((tg) => (
-              <li key={tg.id} className="py-3 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-[#17191C]">
-                    {tg.names.fr} · {tg.names.en} · {tg.names.fon}
-                  </div>
-                  <div className="text-xs font-mono-tabular text-[#525866]">{tg.slug}</div>
-                </div>
-                {canEdit && (
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteTag(tg.id)}
-                    className="min-h-[40px] min-w-[40px] flex items-center justify-center text-red-700 hover:bg-red-50 rounded-[8px] cursor-pointer"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
+          {tags.length === 0 ? (
+            <p className="text-sm text-[#525866]">{t.library.noTags}</p>
+          ) : (
+            <ul className="divide-y divide-[#DFE5EC]">
+              {tags.map((tg) => {
+                const delKey = `tag:${tg.id}`;
+                return (
+                  <li key={tg.id} className="py-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-[#17191C]">
+                        {tg.names.fr} · {tg.names.en} · {tg.names.fon}
+                      </div>
+                      <div className="text-xs font-mono-tabular text-[#525866]">{tg.slug}</div>
+                    </div>
+                    {canEdit && (
+                      confirmDeleteKey === delKey ? (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTag(tg.id)}
+                            className="min-h-[36px] px-2.5 rounded-[8px] bg-red-600 text-white text-xs font-semibold cursor-pointer"
+                          >
+                            {t.common.confirm}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteKey(null)}
+                            className="min-h-[36px] px-2 rounded-[8px] border border-[#DFE5EC] text-xs font-semibold text-[#525866] cursor-pointer"
+                          >
+                            {t.common.cancel}
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteKey(delKey)}
+                          aria-label={`${t.common.delete} ${tg.slug}`}
+                          className="min-h-[40px] min-w-[40px] flex items-center justify-center text-red-700 hover:bg-red-50 rounded-[8px] cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
       </div>
     </div>

@@ -599,7 +599,9 @@ describe('RBAC, Firebase Auth Verification & Hardened Phase 1 Workflows — Emul
     });
     expect(uploadRes.status).toBe(201);
     expect(uploadRes.data.asset.url).toBe(`/api/media/${uploadRes.data.asset.id}`);
-    expect(uploadRes.data.asset.storagePath).toContain(`workspaces/${wsId}/media/`);
+    expect(uploadRes.data.asset.storagePath).toBe(
+      `workspaces/${wsId}/media/${uploadRes.data.asset.id}/test.png`
+    );
 
     // Draft/unreferenced media must deny anonymous & cross-workspace requests
     expect((await fetch(`${baseUrl}${uploadRes.data.asset.url}`)).status).toBe(401);
@@ -609,7 +611,7 @@ describe('RBAC, Firebase Auth Verification & Hardened Phase 1 Workflows — Emul
           headers: { Authorization: `Bearer ${otherOwner.idToken}` },
         })
       ).status
-    ).toBe(404);
+    ).toBe(403);
 
     const streamRes = await fetch(`${baseUrl}${uploadRes.data.asset.url}`, {
       headers: { Authorization: `Bearer ${editor.idToken}` },

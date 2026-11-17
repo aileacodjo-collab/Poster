@@ -46,10 +46,18 @@ interface NativeBottomSheetProps {
   onClose: () => void;
   title: string;
   subtitle?: string;
+  closeLabel?: string;
   children: React.ReactNode;
 }
 
-function NativeBottomSheet({ open, onClose, title, subtitle, children }: NativeBottomSheetProps) {
+function NativeBottomSheet({
+  open,
+  onClose,
+  title,
+  subtitle,
+  closeLabel = 'Fermer',
+  children,
+}: NativeBottomSheetProps) {
   const prefersReducedMotion = useReducedMotion();
   const dragControls = useDragControls();
 
@@ -136,7 +144,7 @@ function NativeBottomSheet({ open, onClose, title, subtitle, children }: NativeB
                   type="button"
                   onClick={onClose}
                   className="min-h-[48px] min-w-[48px] flex items-center justify-center rounded-[12px] text-[#525866] hover:bg-[#F1F4F6] hover:text-[#17191C] active:scale-95 transition-all cursor-pointer shrink-0"
-                  aria-label="Fermer"
+                  aria-label={closeLabel}
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -172,8 +180,14 @@ export function StudioShell({ activeModule, onSelectModule, children }: StudioSh
   } = useAuth();
   const { locale, setLocale, t } = useI18n();
   const [menuSheetOpen, setMenuSheetOpen] = useState(false);
-  const [acceptWorkspaceId, setAcceptWorkspaceId] = useState('');
-  const [acceptToken, setAcceptToken] = useState('');
+  const [acceptWorkspaceId, setAcceptWorkspaceId] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('workspaceId') || '';
+  });
+  const [acceptToken, setAcceptToken] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('inviteToken') || '';
+  });
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const [onboardingBusy, setOnboardingBusy] = useState(false);
 
@@ -183,7 +197,7 @@ export function StudioShell({ activeModule, onSelectModule, children }: StudioSh
     try {
       await createPersonalWorkspace();
     } catch (err) {
-      setOnboardingError(err instanceof Error ? err.message : 'Initialisation impossible.');
+      setOnboardingError(err instanceof Error ? err.message : t.studio.onboardingInitError);
     } finally {
       setOnboardingBusy(false);
     }
@@ -204,7 +218,7 @@ export function StudioShell({ activeModule, onSelectModule, children }: StudioSh
       setAcceptToken('');
       await refreshWorkspace(res.workspace.id);
     } catch (err) {
-      setOnboardingError(err instanceof Error ? err.message : 'Invitation refusée ou expirée.');
+      setOnboardingError(err instanceof Error ? err.message : t.studio.onboardingInviteError);
     } finally {
       setOnboardingBusy(false);
     }
@@ -226,7 +240,7 @@ export function StudioShell({ activeModule, onSelectModule, children }: StudioSh
   const renderLocaleSelector = (onSelected?: () => void) => (
     <div className="space-y-2">
       <div className="text-xs font-semibold text-[#525866]">Langue · Language · Gbè</div>
-      <div className="grid grid-cols-3 gap-2" role="group" aria-label="Langue">
+      <div className="grid grid-cols-3 gap-2" role="group" aria-label={t.studio.languageSelectorLabel}>
         {SUPPORTED_LOCALES.map((loc: Locale) => {
           const isCurrent = locale === loc;
           return (
@@ -257,7 +271,7 @@ export function StudioShell({ activeModule, onSelectModule, children }: StudioSh
       type="button"
       onClick={() => setMenuSheetOpen(true)}
       className="min-h-[48px] min-w-[48px] flex items-center justify-center rounded-[12px] border border-[#DFE5EC] bg-white text-[#17191C] hover:bg-[#F1F4F6] active:scale-95 transition-all cursor-pointer shrink-0"
-      aria-label="Menu"
+      aria-label={t.common.menu}
       aria-expanded={menuSheetOpen}
     >
       <Menu className="w-5 h-5" />
@@ -291,6 +305,7 @@ export function StudioShell({ activeModule, onSelectModule, children }: StudioSh
           onClose={() => setMenuSheetOpen(false)}
           title="AILEA PostManager"
           subtitle={t.brandTagline}
+          closeLabel={t.common.close}
         >
           {renderLocaleSelector(() => setMenuSheetOpen(false))}
 
@@ -384,6 +399,7 @@ export function StudioShell({ activeModule, onSelectModule, children }: StudioSh
           onClose={() => setMenuSheetOpen(false)}
           title="AILEA PostManager"
           subtitle={firebaseUser.displayName || firebaseUser.email || undefined}
+          closeLabel={t.common.close}
         >
           {renderLocaleSelector(() => setMenuSheetOpen(false))}
 
@@ -428,10 +444,10 @@ export function StudioShell({ activeModule, onSelectModule, children }: StudioSh
                   {t.brandTagline}
                 </p>
                 <h1 className="text-2xl font-bold text-[#17191C]">
-                  Initialiser votre accès éditorial
+                  {t.studio.onboardingTitle}
                 </h1>
                 <p className="text-sm text-[#525866] mt-2">
-                  Créez votre propre espace de publication ou rejoignez une équipe existante à l’aide d’un jeton d’invitation.
+                  {t.studio.onboardingSubtitle}
                 </p>
               </div>
 
@@ -449,21 +465,21 @@ export function StudioShell({ activeModule, onSelectModule, children }: StudioSh
                   className="clay-btn-primary w-full text-base"
                 >
                   <Plus className="w-5 h-5" />
-                  Créer mon espace éditorial personnel
+                  {t.studio.createPersonalWorkspace}
                 </button>
               </div>
 
               <form onSubmit={handleOnboardingAcceptInvite} className="pt-5 border-t border-[#DFE5EC] space-y-3">
                 <h2 className="text-sm font-bold text-[#17191C] flex items-center gap-2">
                   <KeyRound className="w-4 h-4 text-[#006B35]" />
-                  Rejoindre un espace avec une invitation
+                  {t.studio.joinWorkspaceTitle}
                 </h2>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <input
                     type="text"
                     value={acceptWorkspaceId}
                     onChange={(e) => setAcceptWorkspaceId(e.target.value)}
-                    placeholder="Identifiant de l’espace (ws_...)"
+                    placeholder={t.studio.workspaceIdPlaceholder}
                     className="clay-input text-sm font-mono-tabular"
                     required
                   />
@@ -471,7 +487,7 @@ export function StudioShell({ activeModule, onSelectModule, children }: StudioSh
                     type="text"
                     value={acceptToken}
                     onChange={(e) => setAcceptToken(e.target.value)}
-                    placeholder="Jeton d’invitation"
+                    placeholder={t.studio.inviteTokenPlaceholder}
                     className="clay-input text-sm font-mono-tabular"
                     required
                   />
@@ -481,7 +497,7 @@ export function StudioShell({ activeModule, onSelectModule, children }: StudioSh
                   disabled={onboardingBusy}
                   className="clay-btn-secondary text-sm"
                 >
-                  Accepter l’invitation
+                  {t.studio.acceptInvite}
                 </button>
               </form>
             </div>
@@ -502,7 +518,7 @@ export function StudioShell({ activeModule, onSelectModule, children }: StudioSh
             </div>
             {memberships.length > 1 && workspace ? (
               <select
-                aria-label="Espace de travail"
+                aria-label={t.studio.workspaceLabel}
                 value={workspace.id}
                 onChange={(e) => switchWorkspace(e.target.value)}
                 className="clay-input text-xs font-semibold py-2 min-h-[40px]"
@@ -520,7 +536,7 @@ export function StudioShell({ activeModule, onSelectModule, children }: StudioSh
             )}
           </div>
 
-          <nav className="space-y-1" aria-label="Navigation principale">
+          <nav className="space-y-1" aria-label={t.studio.primaryNavAria}>
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = item.id === activeModule;
@@ -580,15 +596,16 @@ export function StudioShell({ activeModule, onSelectModule, children }: StudioSh
         onClose={() => setMenuSheetOpen(false)}
         title="AILEA PostManager"
         subtitle={`${workspace.brandName} · ${activeNav.label}`}
+        closeLabel={t.common.close}
       >
         {memberships.length > 1 && (
           <div className="space-y-1.5">
             <label htmlFor="sheet-workspace-select" className="block text-xs font-semibold text-[#525866]">
-              Espace éditorial
+              {t.studio.editorialWorkspace}
             </label>
             <select
               id="sheet-workspace-select"
-              aria-label="Espace de travail"
+              aria-label={t.studio.workspaceLabel}
               value={workspace.id}
               onChange={(e) => {
                 switchWorkspace(e.target.value);
@@ -605,7 +622,7 @@ export function StudioShell({ activeModule, onSelectModule, children }: StudioSh
           </div>
         )}
 
-        <nav className="space-y-1" aria-label="Navigation principale">
+        <nav className="space-y-1" aria-label={t.studio.primaryNavAria}>
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = item.id === activeModule;

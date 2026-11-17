@@ -8,6 +8,7 @@ import {
   PostReaction,
   PostTranslation,
   SUPPORTED_LOCALES,
+  Tag,
   Workspace,
 } from '../shared/types.ts';
 
@@ -526,7 +527,7 @@ function renderPublicHeaderAndSheet(params: {
 }): string {
   const { brandName, subtitle, locale, languageLinksHtml, footerActionsHtml } = params;
   const dict = UI_STRINGS[locale];
-  const closeAria = locale === 'en' ? 'Close' : 'Fermer';
+  const closeAria = dict.common.close;
   return `
   <header class="topbar">
     <div class="topbar-inner">
@@ -537,7 +538,7 @@ function renderPublicHeaderAndSheet(params: {
         role="button"
         tabindex="0"
         class="menu-trigger clay-control"
-        aria-label="Menu"
+        aria-label="${escHtml(dict.common.menu)}"
         aria-controls="ailea-public-sheet"
         aria-expanded="false"
       >
@@ -598,7 +599,9 @@ export function renderPublicPostHtml(params: {
   bundle: FullPostBundle;
   locale: Locale;
   category: Category | null;
+  tags?: Tag[];
   activeReactionKeys: string[];
+  reactionError?: 'rate_limit' | 'session' | null;
   relatedPosts: Array<{
     locale: Locale;
     title: string;
@@ -607,11 +610,17 @@ export function renderPublicPostHtml(params: {
     publishedAt: string | null;
   }>;
 }): string {
-  const { baseUrl, workspace, bundle, locale, category, activeReactionKeys, relatedPosts } = params;
+  const { baseUrl, workspace, bundle, locale, category, tags = [], activeReactionKeys, reactionError = null, relatedPosts } = params;
   const translation = bundle.translations[locale];
   if (!translation) return renderNotFoundHtml(locale, baseUrl);
 
   const dict = UI_STRINGS[locale];
+  const initialFeedbackMessage =
+    reactionError === 'rate_limit'
+      ? dict.publicReader.reactionRateLimitError
+      : reactionError === 'session'
+        ? dict.publicReader.reactionSessionError
+        : '';
   const seo = resolvePostSEO({
     baseUrl,
     brandName: workspace.brandName,
@@ -720,7 +729,7 @@ ${hreflangTagsHtml}
         <span aria-hidden="true">→</span>
       </a>
       <a href="/" class="action-btn clay-control" style="width:100%;justify-content:space-between;">
-        <span>Studio AILEA</span>
+        <span>${escHtml(dict.publicReader.studioLink)}</span>
         <span aria-hidden="true">↗</span>
       </a>`,
   })}
@@ -748,6 +757,17 @@ ${hreflangTagsHtml}
         ${translation.sanitizedHtml}
       </div>
 
+      ${
+        tags.length > 0
+          ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:24px;" aria-label="${escHtml(dict.library.tags)}">${tags
+              .map(
+                (tag) =>
+                  `<span class="clay-pill" style="display:inline-flex;align-items:center;padding:4px 12px;border-radius:999px;background:#EEF2F5;border:1px solid var(--ailea-border);font-size:0.78rem;font-weight:600;color:var(--ailea-muted);">#${escHtml(tag.names[locale] || tag.names.fr || tag.slug)}</span>`
+              )
+              .join('')}</div>`
+          : ''
+      }
+
       <hr style="border:0;border-top:1px solid var(--ailea-border);margin:36px 0 28px;" />
 
       <section aria-label="${escHtml(dict.reactions.title)}">
@@ -759,13 +779,13 @@ ${hreflangTagsHtml}
         <div class="reaction-grid" id="ailea-reactions" data-post-id="${escHtml(bundle.post.id)}" data-locale="${escHtml(locale)}">
           ${reactionFormsHtml}
         </div>
-        <p id="ailea-reaction-feedback" role="status" style="font-size:0.85rem;color:var(--ailea-emerald);margin:12px 0 0;min-height:20px;"></p>
+        <p id="ailea-reaction-feedback" role="status" style="font-size:0.85rem;color:${reactionError ? '#B91C1C' : 'var(--ailea-emerald)'};margin:12px 0 0;min-height:20px;">${escHtml(initialFeedbackMessage)}</p>
       </section>
 
       <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:28px;padding-top:20px;border-top:1px solid var(--ailea-border);">
         <button type="button" class="action-btn" id="ailea-copy-link" data-url="${escHtml(seo.canonicalUrl)}">${escHtml(dict.common.copyLink)}</button>
         <button type="button" class="action-btn" id="ailea-share-btn" data-title="${escHtml(translation.title)}" data-url="${escHtml(seo.canonicalUrl)}">${escHtml(dict.common.share)}</button>
-        <a href="/" class="action-btn" style="margin-left:auto;">Studio AILEA</a>
+        <a href="/" class="action-btn" style="margin-left:auto;">${escHtml(dict.publicReader.studioLink)}</a>
       </div>
     </article>
 
@@ -936,7 +956,7 @@ ${locale !== 'fon' ? hreflangsHtml : ''}
     ).join('\n            '),
     footerActionsHtml: `
       <a href="/" class="action-btn clay-control" style="width:100%;justify-content:space-between;">
-        <span>Studio AILEA</span>
+        <span>${escHtml(dict.publicReader.studioLink)}</span>
         <span aria-hidden="true">↗</span>
       </a>`,
   })}
@@ -980,7 +1000,7 @@ export function renderNotFoundHtml(locale: Locale, baseUrl: string): string {
         <span aria-hidden="true">→</span>
       </a>
       <a href="/" class="action-btn clay-control" style="width:100%;justify-content:space-between;">
-        <span>Studio AILEA</span>
+        <span>${escHtml(dict.publicReader.studioLink)}</span>
         <span aria-hidden="true">↗</span>
       </a>`,
   })}

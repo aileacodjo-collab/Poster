@@ -120,7 +120,7 @@ describe('Phase 1 Remediation — Express HTTP Authz, Member Privacy & Fault Inj
     }
   });
 
-  it('enforces cross-workspace 404 on authenticated GET /api/media/:id and redacts member emails for viewer role (AUDIT-002 / AUDIT-012)', async () => {
+  it('enforces cross-workspace 403 on authenticated non-member GET /api/media/:id and redacts member emails for viewer role (AUDIT-002 / AUDIT-012)', async () => {
     const ownerARes = await upsertUserAndResolveWorkspace({
       uid: 'u_http_owner_a',
       email: 'ownera@ailea.test',
@@ -156,6 +156,7 @@ describe('Phase 1 Remediation — Express HTTP Authz, Member Privacy & Fault Inj
     const storagePath = await uploadMediaAssetToStorage({
       workspaceId: wsA.id,
       assetId,
+      filename: 'draft-secret.png',
       ext: 'png',
       mimeType: 'image/png',
       buffer: VALID_PNG_BYTES,
@@ -178,11 +179,15 @@ describe('Phase 1 Remediation — Express HTTP Authz, Member Privacy & Fault Inj
 
     const srv = await startTestServer();
     try {
-      // Cross-tenant authenticated member (Owner B) receives 404 without disclosing asset ownership
+      // Cross-tenant authenticated non-member (Owner B) receives 403 without disclosing storagePath or workspaceId
       const crossRead = await fetch(`${srv.baseUrl}/api/media/${assetId}`, {
         headers: { Authorization: 'Bearer token-owner-b' },
       });
-      expect(crossRead.status).toBe(404);
+      expect(crossRead.status).toBe(403);
+      expect(crossRead.headers.get('cache-control')).toBe('private, no-store');
+      const crossBody = await crossRead.text();
+      expect(crossBody).not.toContain(storagePath);
+      expect(crossBody).not.toContain(wsA.id);
 
       // Workspace A member (Owner A) receives 200 with private/no-store cache policy
       const ownerRead = await fetch(`${srv.baseUrl}/api/media/${assetId}`, {

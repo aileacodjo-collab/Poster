@@ -2,11 +2,12 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { isEmulatorModeRequested } from './emulatorGuard.ts';
-import { getAdminStorage } from './firebaseAdmin.ts';
+import { isEmulatorModeRequested, LOCAL_EMULATOR_PROJECT_ID } from './emulatorGuard.ts';
+import { FIREBASE_CONFIG, getAdminStorage } from './firebaseAdmin.ts';
 import { getRepository } from './firestoreRepo.ts';
 import { LocalFileRepository } from './localFallbackRepo.ts';
 import { RepoWriteOp, RepositoryError } from './repository.ts';
+import { validateImageBuffer } from './security.ts';
 import {
   computeWordCountAndReadingTime,
   extractExcerpt,
@@ -105,33 +106,173 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+const SAFE_MEDIA_FILENAME_REGEX = /^[a-zA-Z0-9_-][a-zA-Z0-9._-]{0,119}\.(png|jpg|jpeg|webp|gif)$/i;
+const IMAGE_MIME_TO_EXT: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+};
+
+function hasUnsafePathToken(value: string): boolean {
+  return (
+    value.includes('..') ||
+    value.includes('%') ||
+    value.includes('\\') ||
+    value.includes('/') ||
+    /[\x00-\x1f\x7f]/.test(value)
+  );
+}
+
+export function sanitizeMediaFilename(
+  rawFilename: string,
+  mimeType?: string,
+  fallbackStem = 'media'
+): string {
+  if (!rawFilename || typeof rawFilename !== 'string' || rawFilename.length > 180) {
+    throw new RepositoryError('INVALID_ARGUMENT', 'Nom de fichier média invalide.');
+  }
+  const trimmed = rawFilename.trim();
+  if (!trimmed || hasUnsafePathToken(trimmed)) {
+    throw new RepositoryError('INVALID_ARGUMENT', 'Nom de fichier média non autorisé.');
+  }
+  const extFromMime = mimeType ? IMAGE_MIME_TO_EXT[mimeType] : undefined;
+  if (mimeType && !extFromMime) {
+    throw new RepositoryError('INVALID_ARGUMENT', 'Type MIME média non autorisé.');
+  }
+  const extMatch = trimmed.match(/\.([a-zA-Z0-9]+)$/);
+  const existingExt = extMatch ? extMatch[1].toLowerCase() : '';
+  const stemRaw = extMatch ? trimmed.slice(0, -extMatch[0].length) : trimmed;
+  const safeStem =
+    stemRaw
+      .replace(/[^a-zA-Z0-9._-]+/g, '_')
+      .replace(/\.{2,}/g, '_')
+      .replace(/^[._-]+|[._-]+$/g, '')
+      .slice(0, 80) || fallbackStem.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'media';
+  const finalExt =
+    extFromMime ||
+    (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(existingExt) ? existingExt : 'png');
+  const candidate = `${safeStem}.${finalExt}`;
+  if (!SAFE_MEDIA_FILENAME_REGEX.test(candidate) || candidate.includes('..')) {
+    throw new RepositoryError('INVALID_ARGUMENT', 'Nom de fichier média invalide.');
+  }
+  return candidate;
+}
+
+export function buildCanonicalWorkspaceMediaStoragePath(
+  workspaceId: string,
+  assetId: string,
+  safeFilename: string
+): string {
+  if (!SAFE_ID_REGEX.test(workspaceId) || !SAFE_ID_REGEX.test(assetId)) {
+    throw new RepositoryError('INVALID_ARGUMENT', 'Identifiant d’espace ou de média invalide.');
+  }
+  if (!SAFE_MEDIA_FILENAME_REGEX.test(safeFilename) || hasUnsafePathToken(safeFilename)) {
+    throw new RepositoryError('INVALID_ARGUMENT', 'Nom de fichier média invalide.');
+  }
+  return assertValidWorkspaceMediaStoragePath(
+    `workspaces/${workspaceId}/media/${assetId}/${safeFilename}`,
+    workspaceId,
+    assetId,
+    { allowLegacy: false }
+  );
+}
+
 export function assertValidWorkspaceMediaStoragePath(
   storagePath: string,
   expectedWorkspaceId: string,
-  expectedAssetId?: string
+  expectedAssetId?: string,
+  options?: { allowLegacy?: boolean }
 ): string {
-  if (!storagePath || typeof storagePath !== 'string') {
-    throw new RepositoryError('INVALID_ARGUMENT', 'Chemin de stockage média manquant.');
+  if (!expectedWorkspaceId || !SAFE_ID_REGEX.test(expectedWorkspaceId)) {
+    throw new RepositoryError('INVALID_ARGUMENT', 'Identifiant d’espace de travail invalide.');
   }
-  const clean = storagePath.trim();
-  if (clean.includes('..') || clean.startsWith('/') || clean.includes('\\')) {
+  if (expectedAssetId !== undefined && (!expectedAssetId || !SAFE_ID_REGEX.test(expectedAssetId))) {
+    throw new RepositoryError('INVALID_ARGUMENT', 'Identifiant média invalide.');
+  }
+  if (!storagePath || typeof storagePath !== 'string' || storagePath.length > 512) {
+    throw new RepositoryError('INVALID_ARGUMENT', 'Chemin de stockage média manquant ou invalide.');
+  }
+  if (storagePath !== storagePath.trim() || /[\x00-\x1f\x7f]/.test(storagePath)) {
     throw new RepositoryError('INVALID_ARGUMENT', 'Chemin de stockage média invalide.');
   }
-  const idPart = expectedAssetId ? escapeRegExp(expectedAssetId) : '[a-zA-Z0-9_-]{1,128}';
-  const wsPart = escapeRegExp(expectedWorkspaceId);
-  const pattern = new RegExp(`^workspaces/${wsPart}/media/${idPart}\\.(png|jpg|webp|gif)$`);
-  if (!pattern.test(clean)) {
-    throw new RepositoryError(
-      'PERMISSION_DENIED',
-      'Chemin de stockage média non autorisé pour cet espace de travail.'
-    );
+  if (
+    storagePath.includes('..') ||
+    storagePath.includes('%') ||
+    storagePath.includes('\\') ||
+    storagePath.includes('://') ||
+    storagePath.includes(':') ||
+    storagePath.startsWith('/') ||
+    storagePath.endsWith('/') ||
+    storagePath.includes('//')
+  ) {
+    throw new RepositoryError('INVALID_ARGUMENT', 'Chemin de stockage média invalide.');
   }
-  return clean;
+
+  const segments = storagePath.split('/');
+  if (segments.length === 5) {
+    const [rootSeg, wsSeg, mediaSeg, assetSeg, fileSeg] = segments;
+    if (rootSeg !== 'workspaces' || mediaSeg !== 'media') {
+      throw new RepositoryError('INVALID_ARGUMENT', 'Convention de chemin de stockage média invalide.');
+    }
+    if (!SAFE_ID_REGEX.test(wsSeg) || !SAFE_ID_REGEX.test(assetSeg)) {
+      throw new RepositoryError('INVALID_ARGUMENT', 'Segment identifiant invalide dans le chemin média.');
+    }
+    if (wsSeg !== expectedWorkspaceId || (expectedAssetId !== undefined && assetSeg !== expectedAssetId)) {
+      throw new RepositoryError(
+        'PERMISSION_DENIED',
+        'Chemin de stockage média non autorisé pour cet espace de travail.'
+      );
+    }
+    if (!SAFE_MEDIA_FILENAME_REGEX.test(fileSeg) || fileSeg.includes('..')) {
+      throw new RepositoryError('INVALID_ARGUMENT', 'Nom de fichier invalide dans le chemin de stockage média.');
+    }
+    return storagePath;
+  }
+
+  if (options?.allowLegacy !== false && segments.length === 4) {
+    const [rootSeg, wsSeg, mediaSeg, legacyFileSeg] = segments;
+    if (rootSeg !== 'workspaces' || mediaSeg !== 'media') {
+      throw new RepositoryError('INVALID_ARGUMENT', 'Convention de chemin de stockage média invalide.');
+    }
+    const legacyMatch = legacyFileSeg.match(/^([a-zA-Z0-9_-]{1,160})\.(png|jpg|jpeg|webp|gif)$/i);
+    if (!legacyMatch) {
+      throw new RepositoryError('INVALID_ARGUMENT', 'Nom de fichier média hérité invalide.');
+    }
+    const [, legacyAssetSeg] = legacyMatch;
+    if (!SAFE_ID_REGEX.test(wsSeg) || !SAFE_ID_REGEX.test(legacyAssetSeg)) {
+      throw new RepositoryError('INVALID_ARGUMENT', 'Segment identifiant invalide dans le chemin média.');
+    }
+    if (
+      wsSeg !== expectedWorkspaceId ||
+      (expectedAssetId !== undefined && legacyAssetSeg !== expectedAssetId)
+    ) {
+      throw new RepositoryError(
+        'PERMISSION_DENIED',
+        'Chemin de stockage média non autorisé pour cet espace de travail.'
+      );
+    }
+    return storagePath;
+  }
+
+  throw new RepositoryError('INVALID_ARGUMENT', 'Convention de chemin de stockage média non conforme.');
 }
 
 function extractInternalMediaId(url: string): string | null {
-  const match = url.trim().match(/^\/api\/media\/([^/?#]+)$/);
+  const match = url.trim().match(/^\/api\/media\/([^/?#]+)(?:[?#].*)?$/);
   return match ? match[1] : null;
+}
+
+function extractAllInternalMediaIdsFromMarkdown(markdown: string): string[] {
+  const ids = new Set<string>();
+  const regex = /\/api\/media\/([a-zA-Z0-9_-]{1,160})(?=$|[^a-zA-Z0-9_-])/g;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(markdown)) !== null) {
+    if (SAFE_ID_REGEX.test(m[1])) {
+      ids.add(m[1]);
+    }
+  }
+  return Array.from(ids);
 }
 
 async function assertWorkspaceSafeMediaUrl(url: string, workspaceId: string): Promise<void> {
@@ -154,6 +295,8 @@ async function assertWorkspaceSafeMediaUrl(url: string, workspaceId: string): Pr
 }
 
 export async function isMediaAssetPubliclyReferenced(asset: MediaAsset): Promise<boolean> {
+  if (!asset || !asset.id || !asset.workspaceId || !asset.storagePath) return false;
+  if ((asset as MediaAsset & { deletedAt?: string }).deletedAt) return false;
   const repo = getRepository();
   const snaps = await repo.query<PublishedPostSnapshot>('publishedPosts', {
     filters: [
@@ -171,12 +314,22 @@ export async function isMediaAssetPubliclyReferenced(asset: MediaAsset): Promise
   for (const row of snaps) {
     const snap = row.data;
     if (snap.status !== 'published' || snap.post?.status !== 'published') continue;
-    if (snap.post.featuredImageUrl === canonicalUrl || (asset.url && snap.post.featuredImageUrl === asset.url)) {
+    const featured = snap.post.featuredImageUrl || '';
+    if (
+      featured === canonicalUrl ||
+      featured.startsWith(`${canonicalUrl}?`) ||
+      (asset.url && featured === asset.url)
+    ) {
       return true;
     }
     for (const loc of SUPPORTED_LOCALES) {
       const seoRow = snap.seo?.[loc];
-      if (seoRow?.ogImageUrl === canonicalUrl || (asset.url && seoRow?.ogImageUrl === asset.url)) {
+      const ogImg = seoRow?.ogImageUrl || '';
+      if (
+        ogImg === canonicalUrl ||
+        ogImg.startsWith(`${canonicalUrl}?`) ||
+        (asset.url && ogImg === asset.url)
+      ) {
         return true;
       }
       const tr = snap.translations?.[loc];
@@ -865,6 +1018,7 @@ Wěmá ɖíɖè tɔ́n ɖò **Flanségbè**, **Glɛ̌sìgbè** kpódó **Fɔngb�
     seo: seoSnapshot,
     reactions: postReactions,
     categorySnapshot: catCulture,
+    tagsSnapshot: [tagMultilingual],
     publishedAt: now,
     updatedAt: now,
   };
@@ -1817,7 +1971,10 @@ export async function createPostVersionSnapshot(params: {
   });
 }
 
-function isLocaleSnapshotPublishable(locale: Locale, tr: PublishedTranslationData | PostTranslation | null): boolean {
+function isLocaleSnapshotPublishable(
+  locale: Locale,
+  tr: PublishedTranslationData | PostTranslation | null | undefined
+): boolean {
   if (!tr) return false;
   if (!tr.title.trim() || !tr.slug.trim() || !tr.markdownContent.trim()) return false;
   if (locale === 'fon' && tr.translationStatus !== 'approved') return false;
@@ -1860,7 +2017,8 @@ export async function publishPost(params: {
       ])
     );
 
-    const [trFr, trEn, trFon, seoFr, seoEn, seoFon, catSnap, ...freshReactions] = await Promise.all([
+    const tagIds = Array.isArray(post.tagIds) ? post.tagIds : [];
+    const [trFr, trEn, trFon, seoFr, seoEn, seoFon, catSnap, tagReads, freshReactions] = await Promise.all([
       tx.get<PostTranslation>(`postTranslations/${params.postId}_fr`),
       tx.get<PostTranslation>(`postTranslations/${params.postId}_en`),
       tx.get<PostTranslation>(`postTranslations/${params.postId}_fon`),
@@ -1868,8 +2026,13 @@ export async function publishPost(params: {
       tx.get<SEOSetting>(`seoSettings/${params.postId}_en`),
       tx.get<SEOSetting>(`seoSettings/${params.postId}_fon`),
       post.categoryId ? tx.get<Category>(`categories/${post.categoryId}`) : Promise.resolve(null),
-      ...keysToRead.map((k) => tx.get<PostReaction>(`postReactions/${params.postId}_${k}`)),
+      Promise.all(tagIds.map((tid) => tx.get<Tag>(`tags/${tid}`))),
+      Promise.all(keysToRead.map((k) => tx.get<PostReaction>(`postReactions/${params.postId}_${k}`))),
     ]);
+
+    const tagSnaps = tagReads.filter(
+      (t): t is Tag => t !== null && typeof t.slug === 'string' && t.workspaceId === params.workspaceId
+    );
 
     const translations: Record<Locale, PostTranslation | null> = { fr: trFr, en: trEn, fon: trFon };
     const seo: Record<Locale, SEOSetting | null> = { fr: seoFr, en: seoEn, fon: seoFon };
@@ -1910,7 +2073,8 @@ export async function publishPost(params: {
     }> = [];
     for (const loc of SUPPORTED_LOCALES) {
       const prevPubSlug = existingPub?.translations?.[loc]?.slug;
-      const newSlug = isLocaleSnapshotPublishable(loc, translations[loc]) ? translations[loc]!.slug : null;
+      const candidateTr = translations[loc];
+      const newSlug = candidateTr && isLocaleSnapshotPublishable(loc, candidateTr) ? candidateTr.slug : null;
       if (prevPubSlug && prevPubSlug !== newSlug) {
         const [oldLock, oldRoute] = await Promise.all([
           tx.get<SlugLock>(`slugLocks/${slugLockDocId(loc, prevPubSlug)}`),
@@ -2050,6 +2214,7 @@ export async function publishPost(params: {
       seo: publishedSeo,
       reactions: publishedReactions,
       categorySnapshot: catSnap && catSnap.workspaceId === params.workspaceId ? catSnap : null,
+      tagsSnapshot: tagSnaps,
       publishedAt,
       updatedAt: now,
     };
@@ -2638,6 +2803,7 @@ export async function getPublishedPostByLocaleSlug(
   workspace: Workspace;
   bundle: FullPostBundle;
   category: Category | null;
+  tags: Tag[];
   relatedPosts: Array<{ locale: Locale; title: string; slug: string; excerpt: string; publishedAt: string | null }>;
 } | null> {
   const repo = getRepository();
@@ -2666,7 +2832,7 @@ export async function getPublishedPostByLocaleSlug(
   const tr = snap.translations?.[locale];
   if (!tr || !isLocaleSnapshotPublishable(locale, tr) || tr.slug !== cleanSlug) return null;
 
-  const [workspace, reactions, categoryCandidate, otherPubSnaps] = await Promise.all([
+  const [workspace, reactions, categoryCandidate, tagsCandidate, otherPubSnaps] = await Promise.all([
     repo.get<Workspace>(`workspaces/${snap.workspaceId}`),
     mergeLiveReactionCounts(snap.postId, snap.reactions),
     snap.categorySnapshot !== undefined
@@ -2674,6 +2840,9 @@ export async function getPublishedPostByLocaleSlug(
       : snap.post.categoryId
         ? repo.get<Category>(`categories/${snap.post.categoryId}`)
         : Promise.resolve(null),
+    snap.tagsSnapshot !== undefined
+      ? Promise.resolve(snap.tagsSnapshot)
+      : Promise.all((snap.post.tagIds || []).map((tid) => repo.get<Tag>(`tags/${tid}`))),
     repo.query<PublishedPostSnapshot>('publishedPosts', {
       filters: [
         { field: 'workspaceId', op: '==', value: snap.workspaceId },
@@ -2686,6 +2855,7 @@ export async function getPublishedPostByLocaleSlug(
   if (!workspace) return null;
   const category =
     categoryCandidate && categoryCandidate.workspaceId === workspace.id ? categoryCandidate : null;
+  const tags = (tagsCandidate || []).filter((t): t is Tag => t !== null && t.workspaceId === workspace.id);
 
   const bundle = publishedSnapshotToBundle(snap, reactions);
 
@@ -2712,7 +2882,7 @@ export async function getPublishedPostByLocaleSlug(
     if (relatedPosts.length >= 3) break;
   }
 
-  return { workspace, bundle, category, relatedPosts };
+  return { workspace, bundle, category, tags, relatedPosts };
 }
 
 export async function listAllPublishedPostsForLocale(locale: Locale): Promise<
@@ -3195,49 +3365,81 @@ export async function getWorkspaceAnalytics(workspaceId: string, filterPostId?: 
 // STORAGE MEDIA HELPERS (RED-011 / AUDIT-001 / AUDIT-002 / AUDIT-005)
 // ============================================================================
 
-function resolveLocalMediaPath(storagePath: string, expectedWorkspaceId?: string, expectedAssetId?: string): string {
-  if (expectedWorkspaceId) {
-    assertValidWorkspaceMediaStoragePath(storagePath, expectedWorkspaceId, expectedAssetId);
-  } else if (!storagePath || storagePath.includes('..') || storagePath.startsWith('/') || storagePath.includes('\\')) {
-    throw new RepositoryError('INVALID_ARGUMENT', 'Chemin média invalide.');
-  }
+function resolveLocalMediaPath(
+  storagePath: string,
+  expectedWorkspaceId: string,
+  expectedAssetId: string
+): string {
+  const validated = assertValidWorkspaceMediaStoragePath(storagePath, expectedWorkspaceId, expectedAssetId);
   const mediaRoot = path.resolve(process.cwd(), '.data/media');
-  const resolved = path.resolve(mediaRoot, storagePath);
+  const resolved = path.resolve(mediaRoot, validated);
   if (!resolved.startsWith(`${mediaRoot}${path.sep}`)) {
     throw new RepositoryError('INVALID_ARGUMENT', 'Chemin média invalide.');
   }
   return resolved;
 }
 
+function getValidatedAdminMediaBucket() {
+  const bucket = getAdminStorage().bucket();
+  const expectedBucket = isEmulatorModeRequested()
+    ? `${(process.env.FIREBASE_PROJECT_ID || LOCAL_EMULATOR_PROJECT_ID).trim()}.appspot.com`
+    : FIREBASE_CONFIG.storageBucket;
+  if (!expectedBucket || (bucket.name && bucket.name !== expectedBucket)) {
+    throw new RepositoryError('PERMISSION_DENIED', 'Bucket de stockage média non autorisé.');
+  }
+  return bucket;
+}
+
 export async function uploadMediaAssetToStorage(params: {
   workspaceId: string;
   assetId: string;
+  filename?: string;
   ext: string;
   mimeType: string;
   buffer: Buffer;
+  actorId?: string;
 }): Promise<string> {
-  const storagePath = assertValidWorkspaceMediaStoragePath(
-    `workspaces/${params.workspaceId}/media/${params.assetId}.${params.ext}`,
+  if (!SAFE_ID_REGEX.test(params.workspaceId) || !SAFE_ID_REGEX.test(params.assetId)) {
+    throw new RepositoryError('INVALID_ARGUMENT', 'Identifiant d’espace ou de média invalide.');
+  }
+  const imgCheck = validateImageBuffer(params.mimeType, params.buffer);
+  if (!imgCheck.ok) {
+    throw new RepositoryError('INVALID_ARGUMENT', imgCheck.error || 'Fichier média invalide.');
+  }
+  if (params.actorId) {
+    const verified = await verifyWorkspaceMembership({
+      uid: params.actorId,
+      email: '',
+      requestedWorkspaceId: params.workspaceId,
+    });
+    if (verified.role !== 'owner' && verified.role !== 'editor') {
+      throw new RepositoryError('PERMISSION_DENIED', 'Permissions insuffisantes pour téléverser un média.');
+    }
+  }
+
+  const safeFilename = params.filename
+    ? sanitizeMediaFilename(params.filename, params.mimeType, params.assetId)
+    : sanitizeMediaFilename(`${params.assetId}.${params.ext}`, params.mimeType, params.assetId);
+  const storagePath = buildCanonicalWorkspaceMediaStoragePath(
     params.workspaceId,
-    params.assetId
+    params.assetId,
+    safeFilename
   );
+
   const useLocal = getRepository() instanceof LocalFileRepository;
   if (!useLocal) {
-    try {
-      const bucket = getAdminStorage().bucket();
-      await bucket.file(storagePath).save(params.buffer, {
-        resumable: false,
-        metadata: {
-          contentType: params.mimeType,
-          cacheControl: 'private, max-age=0, no-store',
-        },
-      });
-      return storagePath;
-    } catch (err) {
-      if (process.env.VITEST === 'true' || isEmulatorModeRequested()) {
-        throw err;
-      }
-    }
+    const bucket = getValidatedAdminMediaBucket();
+    assertValidWorkspaceMediaStoragePath(storagePath, params.workspaceId, params.assetId, {
+      allowLegacy: false,
+    });
+    await bucket.file(storagePath).save(params.buffer, {
+      resumable: false,
+      metadata: {
+        contentType: params.mimeType,
+        cacheControl: 'private, max-age=0, no-store',
+      },
+    });
+    return storagePath;
   }
 
   const localPath = resolveLocalMediaPath(storagePath, params.workspaceId, params.assetId);
@@ -3246,18 +3448,28 @@ export async function uploadMediaAssetToStorage(params: {
   return storagePath;
 }
 
-export async function readMediaAssetBuffer(asset: MediaAsset): Promise<Buffer | null> {
-  if (!asset.storagePath) return null;
+export async function readMediaAssetBuffer(
+  asset: MediaAsset,
+  options?: { expectedWorkspaceId?: string }
+): Promise<Buffer | null> {
+  if (!asset || !asset.storagePath || !asset.workspaceId || !asset.id) return null;
+  if (!SAFE_ID_REGEX.test(asset.workspaceId) || !SAFE_ID_REGEX.test(asset.id)) {
+    throw new RepositoryError('INVALID_ARGUMENT', 'Identifiant média invalide.');
+  }
+  if ((asset as MediaAsset & { deletedAt?: string }).deletedAt) {
+    return null;
+  }
+  if (options?.expectedWorkspaceId && asset.workspaceId !== options.expectedWorkspaceId) {
+    throw new RepositoryError('PERMISSION_DENIED', 'Accès média inter-espaces refusé.');
+  }
   const validatedPath = assertValidWorkspaceMediaStoragePath(asset.storagePath, asset.workspaceId, asset.id);
   if (!(getRepository() instanceof LocalFileRepository)) {
     try {
-      const bucket = getAdminStorage().bucket();
+      const bucket = getValidatedAdminMediaBucket();
       const [contents] = await bucket.file(validatedPath).download();
       return contents;
     } catch {
-      if (process.env.VITEST === 'true' || isEmulatorModeRequested()) {
-        return null;
-      }
+      return null;
     }
   }
   try {
@@ -3274,10 +3486,29 @@ export async function deleteWorkspaceMediaAsset(params: {
   actorId: string;
   actorEmail: string;
 }): Promise<void> {
+  if (
+    !SAFE_ID_REGEX.test(params.assetId) ||
+    !SAFE_ID_REGEX.test(params.workspaceId) ||
+    !SAFE_ID_REGEX.test(params.actorId)
+  ) {
+    throw new RepositoryError('INVALID_ARGUMENT', 'Identifiant invalide pour la suppression média.');
+  }
+  const verified = await verifyWorkspaceMembership({
+    uid: params.actorId,
+    email: params.actorEmail,
+    requestedWorkspaceId: params.workspaceId,
+  });
+  if (verified.role !== 'owner' && verified.role !== 'editor') {
+    throw new RepositoryError('PERMISSION_DENIED', 'Permissions insuffisantes pour supprimer un média.');
+  }
+
   const repo = getRepository();
   const asset = await repo.getWorkspaceScoped<MediaAsset>('mediaAssets', params.assetId, params.workspaceId);
   if (!asset) {
     throw new RepositoryError('NOT_FOUND', 'Média introuvable.');
+  }
+  if (asset.id !== params.assetId || asset.workspaceId !== params.workspaceId) {
+    throw new RepositoryError('PERMISSION_DENIED', 'Média non autorisé pour cet espace de travail.');
   }
   if (await isMediaAssetPubliclyReferenced(asset)) {
     throw new RepositoryError(
@@ -3286,18 +3517,21 @@ export async function deleteWorkspaceMediaAsset(params: {
     );
   }
   if (asset.storagePath) {
-    const validatedPath = assertValidWorkspaceMediaStoragePath(asset.storagePath, asset.workspaceId, asset.id);
+    const validatedPath = assertValidWorkspaceMediaStoragePath(asset.storagePath, params.workspaceId, params.assetId);
     if (!(repo instanceof LocalFileRepository)) {
       try {
-        await getAdminStorage().bucket().file(validatedPath).delete({ ignoreNotFound: true });
+        await getValidatedAdminMediaBucket().file(validatedPath).delete({ ignoreNotFound: true });
       } catch {
-        // Ignore storage cleanup errors when blob is already absent
+        // Ignore missing blob on Storage cleanup
       }
-    }
-    try {
-      await fs.unlink(resolveLocalMediaPath(validatedPath, asset.workspaceId, asset.id));
-    } catch {
-      // Ignore local file absence
+    } else {
+      try {
+        const localPath = resolveLocalMediaPath(validatedPath, params.workspaceId, params.assetId);
+        await fs.unlink(localPath);
+        await fs.rmdir(path.dirname(localPath)).catch(() => {});
+      } catch {
+        // Ignore local file absence
+      }
     }
   }
   await repo.delete(`mediaAssets/${params.assetId}`);
@@ -3398,7 +3632,7 @@ const backupMediaAssetSchema = z
     mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']),
     sizeBytes: z.number().int().min(0).max(5 * 1024 * 1024),
     url: z.string().min(1).max(512),
-    storagePath: z.string().max(512).optional(),
+    storagePath: z.string().min(1).max(512).optional(),
     altText: localizedTextStrictSchema,
     uploadedBy: z.string().max(128).optional(),
     createdAt: z.string().max(40).optional(),
@@ -3521,7 +3755,7 @@ const backupEnvelopeSchema = z
   .object({
     exportedAt: z.string().max(40).optional(),
     schemaVersion: z.string().max(32).optional(),
-    workspace: z.unknown().optional(),
+    workspace: z.record(z.string(), z.unknown()).nullable().optional(),
     posts: z.array(z.unknown()).max(400).optional(),
     postTranslations: z.array(z.unknown()).max(400).optional(),
     postVersions: z.array(z.unknown()).max(400).optional(),
@@ -3645,26 +3879,50 @@ export async function restoreWorkspaceBackup(params: {
           throw new RepositoryError('INVALID_ARGUMENT', 'Média invalide dans la sauvegarde.');
         }
         const docId = parsed.data.id;
+        if (parsed.data.workspaceId && parsed.data.workspaceId !== workspaceId) {
+          throw new RepositoryError(
+            'PERMISSION_DENIED',
+            `Le média "${docId}" appartient à un autre espace de travail.`
+          );
+        }
+        const safeFilename = sanitizeMediaFilename(parsed.data.filename, parsed.data.mimeType, docId);
         if (!isSafeAssetOrHttpUrl(parsed.data.url)) {
           throw new RepositoryError('INVALID_ARGUMENT', `URL média non autorisée (${docId}).`);
         }
-        const validStoragePath = parsed.data.storagePath
-          ? assertValidWorkspaceMediaStoragePath(parsed.data.storagePath, workspaceId, docId)
-          : undefined;
-        if (validStoragePath && parsed.data.url !== `/api/media/${docId}`) {
+
+        if (parsed.data.storagePath !== undefined) {
+          // Reject any malicious, cross-workspace, wrong-asset, traversal, or unexpected-bucket storagePath,
+          // and never trust the client-supplied path verbatim.
+          assertValidWorkspaceMediaStoragePath(parsed.data.storagePath, workspaceId, docId, {
+            allowLegacy: false,
+          });
+        }
+
+        const isStaticGeneratedAsset = parsed.data.url.startsWith('/assets/images/');
+        if (isStaticGeneratedAsset) {
+          if (parsed.data.storagePath !== undefined) {
+            throw new RepositoryError('INVALID_ARGUMENT', `Chemin de stockage inattendu pour un média statique (${docId}).`);
+          }
+          const staticSubPath = parsed.data.url.slice('/assets/images/'.length);
+          if (!SAFE_MEDIA_FILENAME_REGEX.test(staticSubPath) || hasUnsafePathToken(staticSubPath)) {
+            throw new RepositoryError('INVALID_ARGUMENT', `URL de média statique invalide (${docId}).`);
+          }
+        } else if (parsed.data.url !== `/api/media/${docId}`) {
           throw new RepositoryError('INVALID_ARGUMENT', `URL média incohérente pour ${docId}.`);
         }
-        if (!validStoragePath && !parsed.data.url.startsWith('/assets/images/')) {
-          throw new RepositoryError('INVALID_ARGUMENT', `Source média non reconnue pour ${docId}.`);
-        }
+
+        const authoritativeStoragePath = isStaticGeneratedAsset
+          ? undefined
+          : buildCanonicalWorkspaceMediaStoragePath(workspaceId, docId, safeFilename);
+
         const mediaDoc: MediaAsset = {
           id: docId,
           workspaceId,
-          filename: parsed.data.filename.replace(/[^a-zA-Z0-9._-]/g, '_'),
+          filename: safeFilename,
           mimeType: parsed.data.mimeType,
           sizeBytes: parsed.data.sizeBytes,
           url: parsed.data.url,
-          ...(validStoragePath ? { storagePath: validStoragePath } : {}),
+          ...(authoritativeStoragePath ? { storagePath: authoritativeStoragePath } : {}),
           altText: parsed.data.altText,
           uploadedBy: params.actorId,
           createdAt: parsed.data.createdAt || now,
@@ -3730,6 +3988,9 @@ export async function restoreWorkspaceBackup(params: {
         const parsedMd = parseMarkdownWithFrontmatter(parsed.data.markdownContent);
         const sanitizedHtml = sanitizeAndRenderMarkdown(parsedMd.body);
         const metrics = computeWordCountAndReadingTime(parsedMd.body);
+        for (const bodyMediaId of extractAllInternalMediaIdsFromMarkdown(parsedMd.body)) {
+          referencedMediaIds.add(bodyMediaId);
+        }
         if (cleanSlug) {
           slugChecks.push({ locale: parsed.data.locale, slug: cleanSlug, postId: parsed.data.postId });
         }

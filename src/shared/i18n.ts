@@ -55,6 +55,11 @@ export interface UiDictionary {
     saved: string;
     cancel: string;
     delete: string;
+    confirmDelete: string;
+    confirm: string;
+    close: string;
+    menu: string;
+    refresh: string;
     create: string;
     import: string;
     export: string;
@@ -73,6 +78,15 @@ export interface UiDictionary {
     status: string;
     actions: string;
     back: string;
+    untitled: string;
+    none: string;
+    charactersShort: string;
+    words: string;
+    kilobytes: string;
+    loadError: string;
+    saveError: string;
+    deleteError: string;
+    requestError: string;
   };
   statuses: {
     draft: string;
@@ -82,6 +96,21 @@ export interface UiDictionary {
     missing: string;
     in_review: string;
     approved: string;
+  };
+  studio: {
+    languageSelectorLabel: string;
+    workspaceLabel: string;
+    onboardingTitle: string;
+    onboardingSubtitle: string;
+    createPersonalWorkspace: string;
+    joinWorkspaceTitle: string;
+    workspaceIdPlaceholder: string;
+    inviteTokenPlaceholder: string;
+    acceptInvite: string;
+    onboardingInitError: string;
+    onboardingInviteError: string;
+    editorialWorkspace: string;
+    primaryNavAria: string;
   };
   dashboard: {
     title: string;
@@ -94,6 +123,7 @@ export interface UiDictionary {
     totalReactions: string;
     recentEvents: string;
     translationMatrix: string;
+    articleHeading: string;
   };
   postManager: {
     title: string;
@@ -109,6 +139,20 @@ export interface UiDictionary {
     autosaveActive: string;
     publishReady: string;
     publishBlocked: string;
+    selectPost: string;
+    newPostTitlePlaceholder: string;
+    primaryLocaleLabel: string;
+    loadMdFile: string;
+    noImage: string;
+    tagsLabel: string;
+    noTags: string;
+    titleLabel: string;
+    versionLabel: string;
+    restoredVersionNotice: string;
+    pasteMdPlaceholder: string;
+    importValidationError: string;
+    deleteConfirmPrompt: string;
+    versionPrefix: string;
   };
   translations: {
     title: string;
@@ -120,6 +164,9 @@ export interface UiDictionary {
     linguisticNotes: string;
     markInReview: string;
     approveTranslation: string;
+    reviewerOnlyTooltip: string;
+    linguisticNotesPlaceholder: string;
+    markdownLabel: string;
   };
   reactions: {
     title: string;
@@ -136,6 +183,21 @@ export interface UiDictionary {
     yourReaction: string;
     changeAllowed: string;
     changeLocked: string;
+    persistedVotes: string;
+    moveUp: string;
+    moveDown: string;
+    saveAsPreset: string;
+    presetSaved: string;
+    presetDeleted: string;
+    deletePresetConfirm: string;
+    keyRequiredUnique: string;
+    keyPlaceholder: string;
+    labelFr: string;
+    labelEn: string;
+    labelFon: string;
+    semanticKeyRequired: string;
+    noPresets: string;
+    noPostReactions: string;
   };
   seo: {
     title: string;
@@ -148,6 +210,11 @@ export interface UiDictionary {
     schemaPreview: string;
     sitemapInspect: string;
     robotsInspect: string;
+    metadataHeading: string;
+    noHreflangNote: string;
+    serpPreviewHeading: string;
+    hreflangHeading: string;
+    noindexLabel: string;
   };
   analytics: {
     title: string;
@@ -160,6 +227,11 @@ export interface UiDictionary {
     languageBreakdown: string;
     referrers: string;
     noDataYet: string;
+    postColumn: string;
+    viewsShort: string;
+    reactionsShort: string;
+    noViewsYet: string;
+    noReferrersYet: string;
   };
   library: {
     title: string;
@@ -167,6 +239,17 @@ export interface UiDictionary {
     tags: string;
     media: string;
     uploadImage: string;
+    copyMarkdown: string;
+    markdownCopied: string;
+    invalidImageType: string;
+    imageTooLarge: string;
+    uploadSuccess: string;
+    uploadError: string;
+    deleteMediaConfirm: string;
+    deleteTaxonomyConfirm: string;
+    noMedia: string;
+    noCategories: string;
+    noTags: string;
   };
   settings: {
     title: string;
@@ -176,6 +259,37 @@ export interface UiDictionary {
     auditLogs: string;
     exportBackup: string;
     restoreBackup: string;
+    brandNameLabel: string;
+    workspaceNameLabel: string;
+    workspaceSlugLabel: string;
+    defaultLocaleLabel: string;
+    publicUrlLabel: string;
+    invalidUrlHint: string;
+    inviteEmailPlaceholder: string;
+    inviteCreated: string;
+    inviteTokenOnceNotice: string;
+    copyToken: string;
+    inviteRevoked: string;
+    joinedWorkspace: string;
+    roleUpdated: string;
+    revokedAction: string;
+    invitationsTitle: string;
+    joinAnotherTitle: string;
+    auditDate: string;
+    auditActor: string;
+    auditAction: string;
+    auditDetails: string;
+    auditRestrictedNote: string;
+    restoreSuccess: string;
+    restoreInvalid: string;
+    workspaceCol: string;
+    tokenCol: string;
+    noAuditLogs: string;
+    confirmRemoveMember: string;
+    confirmRevokeInvite: string;
+    inviteButton: string;
+    roleCol: string;
+    memberCol: string;
   };
   publicReader: {
     allArticles: string;
@@ -185,6 +299,9 @@ export interface UiDictionary {
     relatedArticles: string;
     noArticles: string;
     switchLanguage: string;
+    studioLink: string;
+    reactionRateLimitError: string;
+    reactionSessionError: string;
   };
 }
 
@@ -218,6 +335,11 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       saved: 'Enregistré',
       cancel: 'Annuler',
       delete: 'Supprimer',
+      confirmDelete: 'Confirmer ?',
+      confirm: 'Confirmer',
+      close: 'Fermer',
+      menu: 'Menu',
+      refresh: 'Actualiser',
       create: 'Créer',
       import: 'Importer',
       export: 'Exporter',
@@ -236,6 +358,15 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       status: 'Statut',
       actions: 'Actions',
       back: 'Retour',
+      untitled: 'Sans titre',
+      none: 'Aucune',
+      charactersShort: 'car.',
+      words: 'mots',
+      kilobytes: 'Ko',
+      loadError: 'Impossible de charger les données.',
+      saveError: 'Erreur lors de l’enregistrement.',
+      deleteError: 'Erreur lors de la suppression.',
+      requestError: 'La requête a échoué.',
     },
     statuses: {
       draft: 'Brouillon',
@@ -245,6 +376,22 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       missing: 'Manquant',
       in_review: 'En révision',
       approved: 'Approuvé',
+    },
+    studio: {
+      languageSelectorLabel: 'Langue',
+      workspaceLabel: 'Espace',
+      onboardingTitle: 'Bienvenue dans AILEA PostManager',
+      onboardingSubtitle:
+        'Votre compte est vérifié mais n’appartient encore à aucun espace éditorial. Créez votre propre espace ou rejoignez une équipe via un jeton d’invitation.',
+      createPersonalWorkspace: 'Créer mon espace éditorial',
+      joinWorkspaceTitle: 'Rejoindre un espace existant',
+      workspaceIdPlaceholder: 'ID de l’espace (ex: ws_...)',
+      inviteTokenPlaceholder: 'Jeton d’invitation secret',
+      acceptInvite: 'Accepter l’invitation',
+      onboardingInitError: 'Impossible d’initialiser votre espace éditorial.',
+      onboardingInviteError: 'Invitation invalide ou expirée.',
+      editorialWorkspace: 'Espace éditorial',
+      primaryNavAria: 'Navigation principale',
     },
     dashboard: {
       title: 'Vue d’ensemble éditoriale',
@@ -257,6 +404,7 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       totalReactions: 'Réactions réelles',
       recentEvents: 'Journal de publication',
       translationMatrix: 'Matrice de traduction',
+      articleHeading: 'Article',
     },
     postManager: {
       title: 'Gestionnaire d’articles',
@@ -272,6 +420,20 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       autosaveActive: 'Sauvegarde auto active',
       publishReady: 'Prêt pour publication',
       publishBlocked: 'Publication bloquée — corrigez les erreurs',
+      selectPost: 'Sélectionnez ou créez un article pour commencer.',
+      newPostTitlePlaceholder: 'Titre de l’article…',
+      primaryLocaleLabel: 'Langue principale',
+      loadMdFile: 'Charger un fichier .md',
+      noImage: 'Aucune image',
+      tagsLabel: 'Étiquettes',
+      noTags: 'Aucune étiquette dans la médiathèque.',
+      titleLabel: 'Titre',
+      versionLabel: 'Version',
+      restoredVersionNotice: 'Version v{version} restaurée comme nouveau brouillon.',
+      pasteMdPlaceholder: '---\ntitle: Mon titre\nslug: mon-titre\nlocale: fr\n---\n\nVotre contenu Markdown…',
+      importValidationError: 'Le contenu Markdown et la langue sont requis.',
+      deleteConfirmPrompt: 'Confirmer la suppression ?',
+      versionPrefix: 'Version',
     },
     translations: {
       title: 'Studio de traduction',
@@ -284,6 +446,9 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       linguisticNotes: 'Notes linguistiques & tonales',
       markInReview: 'Soumettre pour révision',
       approveTranslation: 'Approuver la traduction',
+      reviewerOnlyTooltip: 'Réservé aux réviseurs ou propriétaires pour le fɔngbè',
+      linguisticNotesPlaceholder: 'Notes orthographiques, variantes tonales ou remarques de révision…',
+      markdownLabel: 'Contenu Markdown',
     },
     reactions: {
       title: 'Studio des réactions',
@@ -300,6 +465,21 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       yourReaction: 'Votre réaction',
       changeAllowed: 'Vous pouvez modifier votre choix à tout moment.',
       changeLocked: 'Choix définitif après envoi.',
+      persistedVotes: 'votes persistés',
+      moveUp: 'Monter',
+      moveDown: 'Descendre',
+      saveAsPreset: 'Modèle',
+      presetSaved: 'Modèle enregistré dans l’espace.',
+      presetDeleted: 'Modèle supprimé.',
+      deletePresetConfirm: 'Supprimer ce modèle ?',
+      keyRequiredUnique: 'Clé sémantique requise et unique (a-z, 0-9, _).',
+      keyPlaceholder: 'ex: solidarity',
+      labelFr: 'Libellé FR',
+      labelEn: 'Libellé EN',
+      labelFon: 'Libellé Fɔngbè',
+      semanticKeyRequired: 'Clé sémantique requise.',
+      noPresets: 'Aucun modèle enregistré dans cet espace.',
+      noPostReactions: 'Aucune réaction configurée pour cet article.',
     },
     seo: {
       title: 'Studio SEO & Indexation',
@@ -313,6 +493,11 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       schemaPreview: 'Aperçu JSON-LD Schema.org',
       sitemapInspect: 'Sitemap XML en direct',
       robotsInspect: 'Directives robots.txt',
+      metadataHeading: 'Métadonnées',
+      noHreflangNote: 'Fɔngbè : aucune balise hreflang générée (évite les codes non standard).',
+      serpPreviewHeading: 'Aperçu moteur de recherche (SERP)',
+      hreflangHeading: 'Balises hreflang (FR / EN uniquement)',
+      noindexLabel: 'Désactiver l’indexation (noindex, nofollow)',
     },
     analytics: {
       title: 'Analytique d’engagement',
@@ -325,6 +510,11 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       languageBreakdown: 'Répartition par langue',
       referrers: 'Sources de trafic',
       noDataYet: 'Aucune interaction enregistrée pour le moment.',
+      postColumn: 'Article',
+      viewsShort: 'vues',
+      reactionsShort: 'réactions',
+      noViewsYet: 'Aucune vue enregistrée',
+      noReferrersYet: 'Aucune source enregistrée',
     },
     library: {
       title: 'Bibliothèque de contenu',
@@ -332,6 +522,17 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       tags: 'Étiquettes',
       media: 'Médias validés',
       uploadImage: 'Téléverser une image',
+      copyMarkdown: 'Copier Markdown',
+      markdownCopied: 'Balise image Markdown copiée.',
+      invalidImageType: 'Format d’image non pris en charge (PNG, JPEG, WebP ou GIF uniquement).',
+      imageTooLarge: 'Image trop volumineuse (maximum 5 Mo).',
+      uploadSuccess: 'Média ajouté et validé.',
+      uploadError: 'Erreur lors de l’envoi du média.',
+      deleteMediaConfirm: 'Supprimer ce média ?',
+      deleteTaxonomyConfirm: 'Supprimer ?',
+      noMedia: 'Aucun média dans cet espace.',
+      noCategories: 'Aucune catégorie créée.',
+      noTags: 'Aucune étiquette créée.',
     },
     settings: {
       title: 'Paramètres de l’espace',
@@ -341,6 +542,37 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       auditLogs: 'Journal d’audit sécurité',
       exportBackup: 'Exporter sauvegarde JSON',
       restoreBackup: 'Restaurer depuis JSON',
+      brandNameLabel: 'Nom public de la revue (brandName)',
+      workspaceNameLabel: 'Nom interne de l’espace',
+      workspaceSlugLabel: 'Slug de l’espace',
+      defaultLocaleLabel: 'Langue par défaut',
+      publicUrlLabel: 'URL de base publique',
+      invalidUrlHint: 'Doit être une URL http(s) valide ou vide.',
+      inviteEmailPlaceholder: 'collegue@domaine.org',
+      inviteCreated: 'Invitation créée pour',
+      inviteTokenOnceNotice: 'Copiez ce jeton maintenant : il ne sera plus affiché après rafraîchissement.',
+      copyToken: 'Copier le jeton',
+      inviteRevoked: 'Invitation révoquée.',
+      joinedWorkspace: 'Vous avez rejoint l’espace éditorial.',
+      roleUpdated: 'Rôle mis à jour.',
+      revokedAction: 'Accès révoqué.',
+      invitationsTitle: 'Invitations en attente & historique',
+      joinAnotherTitle: 'Rejoindre un autre espace via invitation',
+      auditDate: 'Date',
+      auditActor: 'Acteur',
+      auditAction: 'Action',
+      auditDetails: 'Détails',
+      auditRestrictedNote: 'Le journal d’audit sécurité complet est réservé aux propriétaires et éditeurs.',
+      restoreSuccess: 'Sauvegarde restaurée ({count} documents).',
+      restoreInvalid: 'Fichier JSON invalide ou corrompu.',
+      workspaceCol: 'ID Espace',
+      tokenCol: 'Jeton',
+      noAuditLogs: 'Aucun événement d’audit enregistré.',
+      confirmRemoveMember: 'Retirer ce membre ?',
+      confirmRevokeInvite: 'Révoquer cette invitation ?',
+      inviteButton: 'Inviter',
+      roleCol: 'Rôle',
+      memberCol: 'Membre',
     },
     publicReader: {
       allArticles: 'Toutes les publications',
@@ -350,6 +582,9 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       relatedArticles: 'À lire également',
       noArticles: 'Aucun article publié dans cette langue pour le moment.',
       switchLanguage: 'Langue',
+      studioLink: 'Studio AILEA',
+      reactionRateLimitError: 'Trop de réactions envoyées. Patientez un instant.',
+      reactionSessionError: 'Session visiteur requise. Rechargez la page puis réessayez.',
     },
   },
   en: {
@@ -381,6 +616,11 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       saved: 'Saved',
       cancel: 'Cancel',
       delete: 'Delete',
+      confirmDelete: 'Confirm?',
+      confirm: 'Confirm',
+      close: 'Close',
+      menu: 'Menu',
+      refresh: 'Refresh',
       create: 'Create',
       import: 'Import',
       export: 'Export',
@@ -399,6 +639,15 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       status: 'Status',
       actions: 'Actions',
       back: 'Back',
+      untitled: 'Untitled',
+      none: 'None',
+      charactersShort: 'chars',
+      words: 'words',
+      kilobytes: 'KB',
+      loadError: 'Unable to load data.',
+      saveError: 'Failed to save changes.',
+      deleteError: 'Failed to delete item.',
+      requestError: 'The request failed.',
     },
     statuses: {
       draft: 'Draft',
@@ -408,6 +657,22 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       missing: 'Missing',
       in_review: 'In Review',
       approved: 'Approved',
+    },
+    studio: {
+      languageSelectorLabel: 'Language',
+      workspaceLabel: 'Workspace',
+      onboardingTitle: 'Welcome to AILEA PostManager',
+      onboardingSubtitle:
+        'Your account is verified, but you are not a member of an editorial workspace yet. Create a personal workspace or join a team with an invite token.',
+      createPersonalWorkspace: 'Create my editorial workspace',
+      joinWorkspaceTitle: 'Join an existing workspace',
+      workspaceIdPlaceholder: 'Workspace ID (e.g. ws_...)',
+      inviteTokenPlaceholder: 'Secret invite token',
+      acceptInvite: 'Accept invite',
+      onboardingInitError: 'Unable to initialize your editorial workspace.',
+      onboardingInviteError: 'Invalid or expired invite.',
+      editorialWorkspace: 'Editorial workspace',
+      primaryNavAria: 'Primary navigation',
     },
     dashboard: {
       title: 'Editorial Overview',
@@ -420,6 +685,7 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       totalReactions: 'Recorded Reactions',
       recentEvents: 'Publishing Events',
       translationMatrix: 'Translation Readiness',
+      articleHeading: 'Article',
     },
     postManager: {
       title: 'Post Manager',
@@ -435,6 +701,20 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       autosaveActive: 'Autosave ready',
       publishReady: 'Ready to publish',
       publishBlocked: 'Publishing blocked — resolve errors',
+      selectPost: 'Select or create a post to begin.',
+      newPostTitlePlaceholder: 'Article title…',
+      primaryLocaleLabel: 'Primary language',
+      loadMdFile: 'Load .md file',
+      noImage: 'No image',
+      tagsLabel: 'Tags',
+      noTags: 'No tags created in the content library yet.',
+      titleLabel: 'Title',
+      versionLabel: 'Version',
+      restoredVersionNotice: 'Version v{version} restored as a new draft.',
+      pasteMdPlaceholder: '---\ntitle: My Title\nslug: my-title\nlocale: en\n---\n\nYour Markdown body…',
+      importValidationError: 'Markdown content and target language are required.',
+      deleteConfirmPrompt: 'Confirm deletion?',
+      versionPrefix: 'Version',
     },
     translations: {
       title: 'Translation Studio',
@@ -447,6 +727,9 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       linguisticNotes: 'Linguistic & Tonal Notes',
       markInReview: 'Submit for Review',
       approveTranslation: 'Approve Translation',
+      reviewerOnlyTooltip: 'Restricted to reviewers or owners for Fongbe',
+      linguisticNotesPlaceholder: 'Orthographic notes, tone markings, or review feedback…',
+      markdownLabel: 'Markdown content',
     },
     reactions: {
       title: 'Reaction Studio',
@@ -463,6 +746,21 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       yourReaction: 'Your reaction',
       changeAllowed: 'You may update your reaction at any time.',
       changeLocked: 'Selection is final once submitted.',
+      persistedVotes: 'persisted votes',
+      moveUp: 'Move up',
+      moveDown: 'Move down',
+      saveAsPreset: 'Preset',
+      presetSaved: 'Saved as workspace preset.',
+      presetDeleted: 'Preset deleted.',
+      deletePresetConfirm: 'Delete this preset?',
+      keyRequiredUnique: 'Semantic key must be unique (a-z, 0-9, _).',
+      keyPlaceholder: 'e.g. solidarity',
+      labelFr: 'Label FR',
+      labelEn: 'Label EN',
+      labelFon: 'Label Fɔngbè',
+      semanticKeyRequired: 'Semantic key is required.',
+      noPresets: 'No presets saved in this workspace yet.',
+      noPostReactions: 'No reactions configured on this article.',
     },
     seo: {
       title: 'SEO Studio',
@@ -476,6 +774,11 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       schemaPreview: 'Schema.org JSON-LD Preview',
       sitemapInspect: 'Live XML Sitemap',
       robotsInspect: 'Robots Directives',
+      metadataHeading: 'Metadata',
+      noHreflangNote: 'Fongbe: no hreflang tags emitted (avoids non-standard codes).',
+      serpPreviewHeading: 'Search Engine Snippet (SERP)',
+      hreflangHeading: 'Hreflang tags (FR / EN only)',
+      noindexLabel: 'Disable indexing (noindex, nofollow)',
     },
     analytics: {
       title: 'Engagement Analytics',
@@ -488,6 +791,11 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       languageBreakdown: 'Language Distribution',
       referrers: 'Referral Sources',
       noDataYet: 'No reader interactions recorded yet.',
+      postColumn: 'Post',
+      viewsShort: 'views',
+      reactionsShort: 'reactions',
+      noViewsYet: 'No views recorded',
+      noReferrersYet: 'No referrers recorded',
     },
     library: {
       title: 'Content Library',
@@ -495,6 +803,17 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       tags: 'Tags',
       media: 'Media Assets',
       uploadImage: 'Upload Image',
+      copyMarkdown: 'Copy Markdown',
+      markdownCopied: 'Markdown image snippet copied.',
+      invalidImageType: 'Unsupported image format (PNG, JPEG, WebP, or GIF only).',
+      imageTooLarge: 'Image is too large (5 MB max).',
+      uploadSuccess: 'Media uploaded and validated.',
+      uploadError: 'Failed to upload media.',
+      deleteMediaConfirm: 'Delete this media asset?',
+      deleteTaxonomyConfirm: 'Delete?',
+      noMedia: 'No media assets uploaded in this workspace.',
+      noCategories: 'No categories created yet.',
+      noTags: 'No tags created yet.',
     },
     settings: {
       title: 'Workspace Settings',
@@ -504,6 +823,37 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       auditLogs: 'Security Audit Logs',
       exportBackup: 'Export JSON Backup',
       restoreBackup: 'Restore from JSON',
+      brandNameLabel: 'Public publication name (brandName)',
+      workspaceNameLabel: 'Internal workspace name',
+      workspaceSlugLabel: 'Workspace slug',
+      defaultLocaleLabel: 'Default language',
+      publicUrlLabel: 'Public base URL',
+      invalidUrlHint: 'Must be a valid http(s) URL or blank.',
+      inviteEmailPlaceholder: 'colleague@domain.org',
+      inviteCreated: 'Invitation created for',
+      inviteTokenOnceNotice: 'Copy this token now: it will not be shown again after reload.',
+      copyToken: 'Copy token',
+      inviteRevoked: 'Invite revoked.',
+      joinedWorkspace: 'Joined editorial workspace.',
+      roleUpdated: 'Role updated.',
+      revokedAction: 'Access revoked.',
+      invitationsTitle: 'Pending & past invitations',
+      joinAnotherTitle: 'Join another workspace via invite',
+      auditDate: 'Date',
+      auditActor: 'Actor',
+      auditAction: 'Action',
+      auditDetails: 'Details',
+      auditRestrictedNote: 'Full security audit logs are restricted to owners and editors.',
+      restoreSuccess: 'Backup restored ({count} documents).',
+      restoreInvalid: 'Invalid or corrupted JSON backup file.',
+      workspaceCol: 'Workspace ID',
+      tokenCol: 'Token',
+      noAuditLogs: 'No audit log entries recorded yet.',
+      confirmRemoveMember: 'Remove member?',
+      confirmRevokeInvite: 'Revoke invite?',
+      inviteButton: 'Invite',
+      roleCol: 'Role',
+      memberCol: 'Member',
     },
     publicReader: {
       allArticles: 'All Publications',
@@ -513,6 +863,9 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       relatedArticles: 'Related reading',
       noArticles: 'No published articles in this language yet.',
       switchLanguage: 'Language',
+      studioLink: 'AILEA Studio',
+      reactionRateLimitError: 'Too many reactions sent. Please wait a moment.',
+      reactionSessionError: 'Visitor session required. Reload the page and try again.',
     },
   },
   fon: {
@@ -544,6 +897,11 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       saved: 'É hɛn ɖó',
       cancel: 'Gblé',
       delete: 'Súnsún',
+      confirmDelete: 'Hɛn nǔgbó?',
+      confirm: 'Yí gbè',
+      close: 'Sú',
+      menu: 'Alɔnu-tɛ́n',
+      refresh: 'Lɛ́ jlá',
       create: 'Bló yɔ̌yɔ́',
       import: 'Sɔ́ byɔ́ mɛ',
       export: 'Ðè tɔ́n',
@@ -562,6 +920,15 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       status: 'Nìnɔmɛ',
       actions: 'Azɔ̌ lɛ́',
       back: 'Lɛ́ kɔ',
+      untitled: 'Xótà ɖě ǎ',
+      none: 'Ðě ǎ',
+      charactersShort: 'wěkwín',
+      words: 'xókwin',
+      kilobytes: 'Ko',
+      loadError: 'È sìxú bɛ́ nǔ lɛ́ wá ǎ.',
+      saveError: 'Nǔ ɖě jɛ̀ ɖò hɛnhɛn mɛ.',
+      deleteError: 'È sìxú súnsún ǎ.',
+      requestError: 'Azɔ̌ lɛ́ gló.',
     },
     statuses: {
       draft: 'Wěmá kpɛví',
@@ -571,6 +938,22 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       missing: 'É ɖò fí ǎ',
       in_review: 'É ɖò kpɔ́nwɛ́',
       approved: 'É yí gbè',
+    },
+    studio: {
+      languageSelectorLabel: 'Gbè',
+      workspaceLabel: 'Azɔ̌tɛ́n',
+      onboardingTitle: 'Kwabɔ́ ɖò AILEA PostManager',
+      onboardingSubtitle:
+        'A ɖò azɔ̌tɛ́n ɖébǔ mɛ có ǎ. Bló azɔ̌tɛ́n towe yɔ̌yɔ́ alǒ zǎn gbe-kán bó byɔ́ gbɛ̌ta ɖé mɛ.',
+      createPersonalWorkspace: 'Bló azɔ̌tɛ́n ce',
+      joinWorkspaceTitle: 'Byɔ́ azɔ̌tɛ́n ɖěvó mɛ',
+      workspaceIdPlaceholder: 'Azɔ̌tɛ́n sín ID (ws_...)',
+      inviteTokenPlaceholder: 'Gbe-kán hwlahwla',
+      acceptInvite: 'Yí gbè-byɔ́',
+      onboardingInitError: 'È sìxú bló azɔ̌tɛ́n yɔ̌yɔ́ ǎ.',
+      onboardingInviteError: 'Gbe-byɔ́ élɔ́ sɔ́gbè ǎ alǒ é gblé.',
+      editorialWorkspace: 'Azɔ̌tɛ́n wlǎnwá',
+      primaryNavAria: 'Ali nukɔntɔn',
     },
     dashboard: {
       title: 'Azɔ̌ bǐ sín kpɔ́nwɛ́',
@@ -583,6 +966,7 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       totalReactions: 'Xó-sín-nú lɛ́',
       recentEvents: 'Xó-ɖíɖè gǔdo tɔn',
       translationMatrix: 'Gbè-lílɛ́ sín tɛ́n',
+      articleHeading: 'Xówlǎn',
     },
     postManager: {
       title: 'Xówlǎn kpékpé-tɛ́n',
@@ -598,6 +982,20 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       autosaveActive: 'É nɔ́ hɛn ɖó éɖésú',
       publishReady: 'É sɔ́gbè nú ɖíɖè tɔ́n',
       publishBlocked: 'È sìxú ɖè tɔ́n ǎ — bló nǔ e jɛ̀ ǎ lɛ́ ɖó',
+      selectPost: 'Cyán xówlǎn ɖé alǒ bló yɔ̌yɔ́.',
+      newPostTitlePlaceholder: 'Xótà xówlǎn tɔn…',
+      primaryLocaleLabel: 'Gbè nukɔntɔn',
+      loadMdFile: 'Zé wěmá .md ɖó',
+      noImage: 'Fɔtóo ɖě ǎ',
+      tagsLabel: 'Wuntun lɛ́',
+      noTags: 'Wuntun ɖě ɖò wěmá-xɔ mɛ có ǎ.',
+      titleLabel: 'Xótà',
+      versionLabel: 'Wěmá-kɛ́n',
+      restoredVersionNotice: 'Xówlǎn v{version} lɛ́ kɔ wá ɖó kpɛví mɛ.',
+      pasteMdPlaceholder: '---\ntitle: Xótà ce\nslug: xota-ce\nlocale: fon\n---\n\nWlǎn xó towe dó fí…',
+      importValidationError: 'Markdown kpódó gbè kpán ɖò dò.',
+      deleteConfirmPrompt: 'Hɛn nǔgbó ɖɔ a ná súnsún?',
+      versionPrefix: 'Wěmá-kɛ́n',
     },
     translations: {
       title: 'Gbè-lílɛ́ sín tɛ́n',
@@ -610,6 +1008,9 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       linguisticNotes: 'Gbè sín tɛ́n-mɛ-xó',
       markInReview: 'Sɛ́ dó kpɔ́nwɛ́',
       approveTranslation: 'Yí gbè nú gbè-lílɛ́',
+      reviewerOnlyTooltip: 'Mɛ e nɔ́ kpɔ́n gbè kpódó gǎn kpán kɛ́ɖɛ́ wɛ síxú yí gbè nú Fɔngbè',
+      linguisticNotesPlaceholder: 'Wěkwín sín tɛ́n-mɛ-xó, gbè-ɖyɔ́ lɛ́ alǒ kpɔ́nwɛ́-xó…',
+      markdownLabel: 'Wěmá Markdown',
     },
     reactions: {
       title: 'Xó-sín-nú tɛ́n',
@@ -626,6 +1027,21 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       yourReaction: 'Xó-sín-nú towe',
       changeAllowed: 'A sìxú ɖyɔ́ linlin towe hweɖébǔnu.',
       changeLocked: 'É sɔ́ jɛ̀ ɖíɖyɔ́ ǎ.',
+      persistedVotes: 'yígbè e hɛn ɖó lɛ́',
+      moveUp: 'Sɛ́ yì jǐ',
+      moveDown: 'Sɛ́ wá dò',
+      saveAsPreset: 'Kpɔ́ndéwú',
+      presetSaved: 'Kpɔ́ndéwú hɛn ɖó azɔ̌tɛ́n mɛ.',
+      presetDeleted: 'Kpɔ́ndéwú súnsún.',
+      deletePresetConfirm: 'Súnsún kpɔ́ndéwú élɔ́?',
+      keyRequiredUnique: 'Tinmɛ sín xó ɖó ná nyí vòvò (a-z, 0-9, _).',
+      keyPlaceholder: 'kpɔ́ndéwú: solidarity',
+      labelFr: 'Nyǐkɔ FR',
+      labelEn: 'Nyǐkɔ EN',
+      labelFon: 'Nyǐkɔ Fɔngbè',
+      semanticKeyRequired: 'Tinmɛ sín xó ɖò dò.',
+      noPresets: 'Kpɔ́ndéwú ɖě ɖò azɔ̌tɛ́n élɔ́ mɛ có ǎ.',
+      noPostReactions: 'Xó-sín-nú ɖě ɖò xówlǎn élɔ́ jí ǎ.',
     },
     seo: {
       title: 'SEO Tɛ́n',
@@ -639,6 +1055,11 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       schemaPreview: 'Schema.org JSON-LD',
       sitemapInspect: 'Sitemap XML',
       robotsInspect: 'Robots.txt',
+      metadataHeading: 'Nyǐkɔ SEO tɔn lɛ́',
+      noHreflangNote: 'Fɔngbè: hreflang ɖě nɔ́ tɔ́n ǎ.',
+      serpPreviewHeading: 'Kpɔ́ndéwú ɖò mɔ-ba-tɛ́n (SERP)',
+      hreflangHeading: 'Hreflang (FR / EN kɛ́ɖɛ́)',
+      noindexLabel: 'Mà jǒ mɔ-ba-tɛ́n dó ó (noindex, nofollow)',
     },
     analytics: {
       title: 'Nǔ-kpɔ́n-tɛ́n',
@@ -651,6 +1072,11 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       languageBreakdown: 'Gbè lɛ́ sín kɛ́n',
       referrers: 'Fí e yě gòsín',
       noDataYet: 'Nǔ ɖě jɛ̀ ɖò fí có ǎ.',
+      postColumn: 'Xówlǎn',
+      viewsShort: 'xàtɔ́',
+      reactionsShort: 'xó-sín-nú',
+      noViewsYet: 'Mɛ ɖě xà có ǎ',
+      noReferrersYet: 'Fí ɖě gòsín có ǎ',
     },
     library: {
       title: 'Wěmá-xɔ',
@@ -658,6 +1084,17 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       tags: 'Wuntun lɛ́',
       media: 'Fɔtóo lɛ́',
       uploadImage: 'Sɛ́ fɔtóo dó',
+      copyMarkdown: 'Wlí Markdown',
+      markdownCopied: 'Wlí alɔ-kán fɔtóo Markdown tɔn fó.',
+      invalidImageType: 'Fɔtóo élɔ́ sɔ́gbè ǎ (PNG, JPEG, WebP alǒ GIF kɛ́ɖɛ́).',
+      imageTooLarge: 'Fɔtóo ɔ́ kló ɖín (5 Mo jɛ̀n jɛ̀).',
+      uploadSuccess: 'Fɔtóo byɔ́ mɛ gànjí.',
+      uploadError: 'Fɔtóo sɛ́dó gló.',
+      deleteMediaConfirm: 'Súnsún fɔtóo élɔ́?',
+      deleteTaxonomyConfirm: 'Súnsún?',
+      noMedia: 'Fɔtóo ɖě ɖò azɔ̌tɛ́n élɔ́ mɛ ǎ.',
+      noCategories: 'Akɔ́ta ɖě ɖò fí có ǎ.',
+      noTags: 'Wuntun ɖě ɖò fí có ǎ.',
     },
     settings: {
       title: 'Tòtò-tɛ́n',
@@ -667,6 +1104,37 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       auditLogs: 'Wěmá-xɔ́ ayǐkúngban tɔn',
       exportBackup: 'Ðè JSON tɔ́n',
       restoreBackup: 'Lɛ́ kɔ wá sín JSON',
+      brandNameLabel: 'Nyǐkɔ tò-bǐ tɔn (brandName)',
+      workspaceNameLabel: 'Nyǐkɔ azɔ̌tɛ́n mɛ tɔn',
+      workspaceSlugLabel: 'Alɔ-kán azɔ̌tɛ́n tɔn',
+      defaultLocaleLabel: 'Gbè nukɔntɔn',
+      publicUrlLabel: 'Alɔ-kán tò-bǐ tɔn',
+      invalidUrlHint: 'Alɔ-kán http(s) jɔwɛ alǒ vɔ̌.',
+      inviteEmailPlaceholder: 'azɔwatɔ@domaine.org',
+      inviteCreated: 'Gbe-byɔ́ bló nú',
+      inviteTokenOnceNotice: 'Wlí gbe-kán élɔ́ dìn: é sɔ́ ná tɔ́n gǔdo ǎ.',
+      copyToken: 'Wlí gbe-kán',
+      inviteRevoked: 'Gbe-byɔ́ gblé.',
+      joinedWorkspace: 'A byɔ́ azɔ̌tɛ́n mɛ.',
+      roleUpdated: 'Azɔ̌ ɖyɔ́.',
+      revokedAction: 'Alɔ-tɔ́n ɖè sín mɛ.',
+      invitationsTitle: 'Gbe-byɔ́ e ɖò tè lɛ́',
+      joinAnotherTitle: 'Byɔ́ azɔ̌tɛ́n ɖěvó mɛ',
+      auditDate: 'Azǎn',
+      auditActor: 'Mɛ',
+      auditAction: 'Azɔ̌',
+      auditDetails: 'Tinmɛ',
+      auditRestrictedNote: 'Gǎn kpódó wlǎnwátɔ́ kpán kɛ́ɖɛ́ wɛ síxú kpɔ́n wěmá-xɔ́ élɔ́.',
+      restoreSuccess: 'Nǔ {count} lɛ́ kɔ wá gànjí.',
+      restoreInvalid: 'Wěmá JSON sɔ́gbè ǎ.',
+      workspaceCol: 'ID Azɔ̌tɛ́n',
+      tokenCol: 'Gbe-kán',
+      noAuditLogs: 'Wěmá-xɔ́ ɖě ɖò fí có ǎ.',
+      confirmRemoveMember: 'Ðè mɛ élɔ́ tɔ́n?',
+      confirmRevokeInvite: 'Sú gbe-byɔ́ élɔ́?',
+      inviteButton: 'Ylɔ́ mɛ',
+      roleCol: 'Azɔ̌',
+      memberCol: 'Azɔ̌watɔ́',
     },
     publicReader: {
       allArticles: 'Xówlǎn bǐ',
@@ -676,6 +1144,9 @@ export const UI_STRINGS: Record<Locale, UiDictionary> = {
       relatedArticles: 'Xówlǎn ɖěvó lɛ́',
       noArticles: 'Xówlǎn ɖě ɖò gbè élɔ́ mɛ có ǎ.',
       switchLanguage: 'Gbè',
+      studioLink: 'AILEA Tɛ́n',
+      reactionRateLimitError: 'A sɛ́ xó-sín-nú gègè ɖín. Nɔ̀ tè kpɛ̀ɖé.',
+      reactionSessionError: 'Lɛ́ jlá wěmá ɔ́ hwɛ̌ cóbónú a nǎ sɛ́ xó-sín-nú dó.',
     },
   },
 };

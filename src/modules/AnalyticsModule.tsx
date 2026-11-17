@@ -12,23 +12,25 @@ export function AnalyticsModule() {
   const [filterPostId, setFilterPostId] = useState<string>('');
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const loadAnalytics = async (postId?: string) => {
     setLoading(true);
+    setError(null);
     try {
       const qs = postId ? `?postId=${encodeURIComponent(postId)}` : '';
       const res = await apiRequest<{ summary: AnalyticsSummary }>(`/api/admin/analytics${qs}`);
       setSummary(res.summary);
-    } catch {
-      // handled gracefully
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t.common.loadError);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadAnalytics(filterPostId);
-  }, [filterPostId]);
+    void loadAnalytics(filterPostId);
+  }, [filterPostId, posts.length]);
 
   const maxTimelineVal = summary
     ? Math.max(1, ...summary.timeline.map((pt) => Math.max(pt.views, pt.reactions)))
@@ -51,7 +53,7 @@ export function AnalyticsModule() {
             <option value="">{t.common.all}</option>
             {posts.map((b) => (
               <option key={b.post.id} value={b.post.id}>
-                {b.translations[b.post.primaryLocale]?.title || b.translations.fr?.title || 'Article'}
+                {b.translations[b.post.primaryLocale]?.title || b.translations.fr?.title || t.dashboard.articleHeading}
               </option>
             ))}
           </select>
@@ -60,12 +62,18 @@ export function AnalyticsModule() {
             type="button"
             onClick={() => loadAnalytics(filterPostId)}
             className="clay-btn-secondary"
-            aria-label="Actualiser"
+            aria-label={t.common.refresh}
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
+
+      {error && (
+        <div className="clay-card p-4 bg-red-50 border-red-200 text-sm text-red-800">
+          {error}
+        </div>
+      )}
 
       {/* KPI Strip */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
@@ -178,7 +186,7 @@ export function AnalyticsModule() {
                 <div key={loc} className="flex items-center justify-between text-sm py-1.5 border-b border-[#DFE5EC] last:border-0">
                   <span className="font-semibold text-[#17191C]">{LOCALE_META[loc].nativeName}</span>
                   <span className="font-mono-tabular text-xs text-[#525866]">
-                    {row.views} vues · {row.reactions} réactions
+                    {row.views} {t.analytics.viewsShort} · {row.reactions} {t.analytics.reactionsShort}
                   </span>
                 </div>
               );
@@ -188,7 +196,7 @@ export function AnalyticsModule() {
           <div className="clay-card p-6 space-y-3">
             <h2 className="text-base font-bold text-[#17191C]">{t.analytics.referrers}</h2>
             {!summary || summary.byReferrer.length === 0 ? (
-              <p className="text-xs text-[#525866]">{t.analytics.noDataYet}</p>
+              <p className="text-xs text-[#525866]">{t.analytics.noReferrersYet}</p>
             ) : (
               summary.byReferrer.slice(0, 6).map((ref) => (
                 <div key={ref.source} className="flex items-center justify-between text-sm py-1 border-b border-[#DFE5EC] last:border-0">
@@ -241,7 +249,7 @@ export function AnalyticsModule() {
             <table className="w-full text-left border-collapse text-sm">
               <thead>
                 <tr className="border-b border-[#DFE5EC] text-xs font-semibold text-[#525866]">
-                  <th className="py-2.5 pr-4">Article</th>
+                  <th className="py-2.5 pr-4">{t.analytics.postColumn}</th>
                   <th className="py-2.5 px-3 text-right">{t.analytics.views}</th>
                   <th className="py-2.5 px-3 text-right">{t.analytics.uniqueVisitors}</th>
                   <th className="py-2.5 px-3 text-right">{t.analytics.reactions}</th>
@@ -249,17 +257,25 @@ export function AnalyticsModule() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#DFE5EC]">
-                {(summary?.perPost || []).map((row) => (
-                  <tr key={row.postId}>
-                    <td className="py-3 pr-4 font-semibold text-[#17191C]">{row.title}</td>
-                    <td className="py-3 px-3 text-right font-mono-tabular">{row.views}</td>
-                    <td className="py-3 px-3 text-right font-mono-tabular">{row.uniqueVisitors}</td>
-                    <td className="py-3 px-3 text-right font-mono-tabular text-[#006B35] font-semibold">
-                      {row.reactions}
+                {(summary?.perPost || []).length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-6 text-center text-xs text-[#525866]">
+                      {loading ? t.common.loading : t.analytics.noViewsYet}
                     </td>
-                    <td className="py-3 pl-3 text-right font-mono-tabular">{row.engagementRate}%</td>
                   </tr>
-                ))}
+                ) : (
+                  (summary?.perPost || []).map((row) => (
+                    <tr key={row.postId}>
+                      <td className="py-3 pr-4 font-semibold text-[#17191C]">{row.title}</td>
+                      <td className="py-3 px-3 text-right font-mono-tabular">{row.views}</td>
+                      <td className="py-3 px-3 text-right font-mono-tabular">{row.uniqueVisitors}</td>
+                      <td className="py-3 px-3 text-right font-mono-tabular text-[#006B35] font-semibold">
+                        {row.reactions}
+                      </td>
+                      <td className="py-3 pl-3 text-right font-mono-tabular">{row.engagementRate}%</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
