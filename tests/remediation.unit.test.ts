@@ -11,7 +11,7 @@ import {
 } from '../src/server/emulatorGuard.ts';
 import { setRepository } from '../src/server/firestoreRepo.ts';
 import { LocalFileRepository } from '../src/server/localFallbackRepo.ts';
-import { RepositoryError } from '../src/server/repository.ts';
+import { DataRepository, RepositoryError } from '../src/server/repository.ts';
 import {
   SlidingWindowRateLimiter,
   consumeDistributedRateLimit,
@@ -21,6 +21,7 @@ import {
 import {
   acceptWorkspaceInvite,
   assertValidWorkspaceMediaStoragePath,
+  cleanupDeletedPostChildren,
   cleanupExpiredEphemeralRecords,
   createPost,
   createWorkspaceInvite,
@@ -28,6 +29,7 @@ import {
   deleteWorkspacePost,
   getPostBundle,
   getPublishedPostByLocaleSlug,
+  importMarkdownPost,
   listWorkspaceInvites,
   publishPost,
   recordPublicView,
@@ -35,14 +37,24 @@ import {
   revokeWorkspaceInvite,
   savePostReactionsConfig,
   savePostTranslation,
+  saveSeoSetting,
   submitPublicReaction,
   unpublishPost,
+  updatePostMetadata,
   updateWorkspaceSettings,
   uploadMediaAssetToStorage,
   upsertUserAndResolveWorkspace,
 } from '../src/server/store.ts';
 import { renderNotFoundHtml, renderPublicIndexHtml, renderPublicPostHtml } from '../src/server/ssr.ts';
-import { Category, FullPostBundle, MediaAsset, Workspace } from '../src/shared/types.ts';
+import {
+  Category,
+  FullPostBundle,
+  MediaAsset,
+  Post,
+  PostView,
+  PublishedPostSnapshot,
+  Workspace,
+} from '../src/shared/types.ts';
 
 const VALID_PNG_BYTES = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -975,5 +987,508 @@ describe('Phase 1 Remediation — Repository, HTTP, Media, Invites & Backup Regr
     expect(notFoundHtml).toContain('id="ailea-public-sheet"');
     expect(notFoundHtml).toContain('hreflang="fr"');
     expect(notFoundHtml).not.toContain('hreflang="fon"');
+  });
+
+  it('preserves shared media access until the final referencing published post is unpublished (AUDIT-002)', async () => {
+    const ownerRes = await upsertUserAndResolveWorkspace({
+      uid: 'u_shared_med',
+      email: 'sharedmed@ailea.test',
+      appBaseUrl: 'https://ailea.example',
+      createPersonalWorkspace: true,
+    });
+    const ws = ownerRes.workspace!;
+    const { getRepository } = await import('../src/server/firestoreRepo.ts');
+    const repo = getRepository();
+
+    const assetId = `med_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    const storagePath = await uploadMediaAssetToStorage({
+      workspaceId: ws.id,
+      assetId,
+      ext: 'png',
+      mimeType: 'image/png',
+      buffer: VALID_PNG_BYTES,
+    });
+    createdLocalMediaFiles.push(path.resolve(process.cwd(), '.data/media', storagePath));
+    const asset: MediaAsset = {
+      id: assetId,
+      workspaceId: ws.id,
+      filename: 'shared.png',
+      mimeType: 'image/png',
+      sizeBytes: VALID_PNG_BYTES.length,
+      url: `/api/media/${assetId}`,
+      storagePath,
+      altText: { fr: 'Shared', en: 'Shared', fon: 'Shared' },
+      uploadedBy: 'u_shared_med',
+      createdAt: new Date().toISOString(),
+    };
+    await repo.set(`mediaAssets/${assetId}`, asset as unknown as Record<string, unknown>);
+
+    const post1 = await createPost({
+      workspaceId: ws.id,
+      actorId: 'u_shared_med',
+      actorName: 'Owner',
+      actorEmail: 'sharedmed@ailea.test',
+      title: 'Shared Post Un',
+      primaryLocale: 'fr',
+      markdownContent: `Corps 1 ![shared](/api/media/${assetId})`,
+      slug: 'shared-post-un',
+      featuredImageUrl: `/api/media/${assetId}`,
+    });
+    const post2 = await createPost({
+      workspaceId: ws.id,
+      actorId: 'u_shared_med',
+      actorName: 'Owner',
+      actorEmail: 'sharedmed@ailea.test',
+      title: 'Shared Post Deux',
+      primaryLocale: 'fr',
+      markdownContent: `Corps 2 ![shared](/api/media/${assetId})`,
+      slug: 'shared-post-deux',
+    });
+
+    await publishPost({ postId: post1.post.id, workspaceId: ws.id, actorId: 'u_shared_med', actorEmail: 'sharedmed@ailea.test' });
+    await publishPost({ postId: post2.post.id, workspaceId: ws.id, actorId: 'u_shared_med', actorEmail: 'sharedmed@ailea.test' });
+
+    const srv = await startTestServer();
+    try {
+      // Unpublish post1 only -> post2 still references assetId publicly
+      await unpublishPost({ postId: post1.post.id, workspaceId: ws.id, actorId: 'u_shared_med', actorEmail: 'sharedmed@ailea.test' });
+      const stillPublic = await fetch(`${srv.baseUrl}/api/media/${assetId}`);
+      expect(stillPublic.status).toBe(200);
+      expect(stillPublic.headers.get('cache-control')).toBe('public, max-age=60, must-revalidate');
+      await expect(
+        deleteWorkspaceMediaAsset({ assetId, workspaceId: ws.id, actorId: 'u_shared_med', actorEmail: 'sharedmed@ailea.test' })
+      ).rejects.toMatchObject({ code: 'CONFLICT', httpStatus: 409 });
+
+      // Unpublish post2 as well -> anonymous access revoked (401) and deletion now permitted
+      await unpublishPost({ postId: post2.post.id, workspaceId: ws.id, actorId: 'u_shared_med', actorEmail: 'sharedmed@ailea.test' });
+      const nowPrivate = await fetch(`${srv.baseUrl}/api/media/${assetId}`);
+      expect(nowPrivate.status).toBe(401);
+      await deleteWorkspaceMediaAsset({ assetId, workspaceId: ws.id, actorId: 'u_shared_med', actorEmail: 'sharedmed@ailea.test' });
+      expect(await repo.get(`mediaAssets/${assetId}`)).toBeNull();
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('strips PII from persisted published snapshots & public APIs and isolates published categories from live edits (AUDIT-003 / AUDIT-005)', async () => {
+    const ownerRes = await upsertUserAndResolveWorkspace({
+      uid: 'u_pii_author_secret',
+      email: 'secretauthor@ailea.test',
+      appBaseUrl: 'https://ailea.example',
+      createPersonalWorkspace: true,
+    });
+    const ws = ownerRes.workspace!;
+    const { getRepository } = await import('../src/server/firestoreRepo.ts');
+    const repo = getRepository();
+
+    const category: Category = {
+      id: `${ws.id}_culture-langues`,
+      workspaceId: ws.id,
+      slug: 'culture-langues',
+      names: { fr: 'Culture & Langues Originale', en: 'Culture & Languages', fon: 'Hwɛndomɛ' },
+      createdAt: new Date().toISOString(),
+    };
+    await repo.set(`categories/${category.id}`, category as unknown as Record<string, unknown>);
+
+    const created = await createPost({
+      workspaceId: ws.id,
+      actorId: 'u_pii_author_secret',
+      actorName: 'Auteur Public',
+      actorEmail: 'secretauthor@ailea.test',
+      title: 'Article Snapshot Sanitisé',
+      primaryLocale: 'fr',
+      markdownContent: 'Contenu public propre sans notes internes.',
+      slug: 'article-snapshot-sanitise',
+      categoryId: category.id,
+    });
+    const postId = created.post.id;
+
+    await savePostTranslation({
+      postId,
+      workspaceId: ws.id,
+      locale: 'fr',
+      actorId: 'u_pii_author_secret',
+      actorEmail: 'secretauthor@ailea.test',
+      actorRole: 'owner',
+      title: 'Article Snapshot Sanitisé',
+      slug: 'article-snapshot-sanitise',
+      markdownContent: 'Contenu public propre sans notes internes.',
+      translationStatus: 'approved',
+      linguisticNotes: 'NOTE_INTERNE_CONFIDENTIELLE_FR',
+    });
+    await savePostTranslation({
+      postId,
+      workspaceId: ws.id,
+      locale: 'fon',
+      actorId: 'u_pii_reviewer_secret',
+      actorEmail: 'secretreviewer@ailea.test',
+      actorRole: 'reviewer',
+      title: 'Xówlǎn Fon',
+      slug: 'xowlan-fon-sanitise',
+      markdownContent: 'Wéma Fɔngbè kplé.',
+      translationStatus: 'approved',
+      linguisticNotes: 'NOTE_INTERNE_CONFIDENTIELLE_FON',
+    });
+
+    await publishPost({
+      postId,
+      workspaceId: ws.id,
+      actorId: 'u_pii_author_secret',
+      actorEmail: 'secretauthor@ailea.test',
+    });
+
+    // Mutate and then delete live Category after publication
+    await repo.set(`categories/${category.id}`, {
+      ...category,
+      names: { fr: 'CATEGORIE MODIFIEE BROUILLON', en: 'Edited', fon: 'Edited' },
+    });
+    await repo.delete(`categories/${category.id}`);
+
+    // Persisted snapshot MUST NOT contain internal PII/review fields and retains original category snapshot
+    const persistedSnap = await repo.get<PublishedPostSnapshot>(`publishedPosts/${postId}`);
+    expect(persistedSnap).not.toBeNull();
+    const rawSnapJson = JSON.stringify(persistedSnap);
+    expect(rawSnapJson).not.toContain('u_pii_author_secret');
+    expect(rawSnapJson).not.toContain('u_pii_reviewer_secret');
+    expect(rawSnapJson).not.toContain('NOTE_INTERNE_CONFIDENTIELLE');
+    expect(rawSnapJson).not.toContain('"authorId"');
+    expect(rawSnapJson).not.toContain('"approvedBy"');
+    expect(rawSnapJson).not.toContain('"approvedAt"');
+    expect(rawSnapJson).not.toContain('"linguisticNotes"');
+    expect(persistedSnap!.categorySnapshot?.names.fr).toBe('Culture & Langues Originale');
+
+    const srv = await startTestServer();
+    try {
+      const apiRes = await fetch(`${srv.baseUrl}/api/public/posts/fr/article-snapshot-sanitise`);
+      expect(apiRes.status).toBe(200);
+      const apiText = await apiRes.text();
+      expect(apiText).not.toContain('u_pii_author_secret');
+      expect(apiText).not.toContain('NOTE_INTERNE_CONFIDENTIELLE');
+      expect(apiText).not.toContain('"authorId"');
+      expect(apiText).not.toContain('"approvedBy"');
+      expect(apiText).not.toContain('"linguisticNotes"');
+      const apiJson = JSON.parse(apiText) as { category: Category | null };
+      expect(apiJson.category?.names.fr).toBe('Culture & Langues Originale');
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('preserves counts across reaction races with publish/unpublish and enforces endpoint idempotency, cookie HMAC, and 429/303 rate limits (AUDIT-006 / AUDIT-008)', async () => {
+    const ownerRes = await upsertUserAndResolveWorkspace({
+      uid: 'u_race_owner',
+      email: 'raceowner@ailea.test',
+      appBaseUrl: 'https://ailea.example',
+      createPersonalWorkspace: true,
+    });
+    const ws = ownerRes.workspace!;
+    const { getRepository } = await import('../src/server/firestoreRepo.ts');
+    const repo = getRepository();
+
+    const bundle = await createPost({
+      workspaceId: ws.id,
+      actorId: 'u_race_owner',
+      actorName: 'Race Owner',
+      actorEmail: 'raceowner@ailea.test',
+      title: 'Article Race & Abuse',
+      primaryLocale: 'fr',
+      markdownContent: 'Contenu complet pour tests concurrence et anti-abus.',
+      slug: 'article-race-abuse',
+    });
+    const postId = bundle.post.id;
+    await publishPost({ postId, workspaceId: ws.id, actorId: 'u_race_owner', actorEmail: 'raceowner@ailea.test' });
+
+    // 1. Concurrent reactions raced against publishPost -> zero lost or double-counted votes
+    const [r1, r2] = await Promise.all([
+      submitPublicReaction({ postId, visitorHash: 'vh_pub_race_1', semanticKey: 'curiosity', locale: 'fr' }),
+      submitPublicReaction({ postId, visitorHash: 'vh_pub_race_2', semanticKey: 'curiosity', locale: 'fr' }),
+      publishPost({ postId, workspaceId: ws.id, actorId: 'u_race_owner', actorEmail: 'raceowner@ailea.test' }),
+    ]);
+    expect(r1.status).toBe('ok');
+    expect(r2.status).toBe('ok');
+    const afterPubRace = await repo.get<{ count: number }>(`postReactions/${postId}_curiosity`);
+    expect(afterPubRace?.count).toBe(2);
+
+    // 2. Concurrent reaction raced against unpublishPost -> final count strictly matches accepted 'ok' votes
+    const unpubRace = await Promise.allSettled([
+      submitPublicReaction({ postId, visitorHash: 'vh_unpub_race_3', semanticKey: 'curiosity', locale: 'fr' }),
+      unpublishPost({ postId, workspaceId: ws.id, actorId: 'u_race_owner', actorEmail: 'raceowner@ailea.test' }),
+    ]);
+    const voteBeforeUnpub = unpubRace[0].status === 'fulfilled' && unpubRace[0].value.status === 'ok';
+    const afterUnpubRace = await repo.get<{ count: number }>(`postReactions/${postId}_curiosity`);
+    expect(afterUnpubRace?.count).toBe(voteBeforeUnpub ? 3 : 2);
+
+    // Re-publish for HTTP abuse endpoint tests
+    await publishPost({ postId, workspaceId: ws.id, actorId: 'u_race_owner', actorEmail: 'raceowner@ailea.test' });
+
+    const srv = await startTestServer();
+    try {
+      const reactIp = '198.51.100.42';
+      const pageRes = await fetch(`${srv.baseUrl}/p/fr/article-race-abuse`, {
+        headers: { 'X-Forwarded-For': reactIp },
+      });
+      expect(pageRes.status).toBe(200);
+      const cookieVal = (pageRes.headers.get('set-cookie') || '').match(/ailea_vid=([^;]+)/)?.[1];
+      expect(cookieVal).toBeTruthy();
+
+      // Tampered cookie -> 403 and no Set-Cookie
+      const tamperedRes = await fetch(`${srv.baseUrl}/api/public/reactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Forwarded-For': reactIp,
+          Cookie: `ailea_vid=${'0'.repeat(32)}.1700000000.${'f'.repeat(32)}`,
+        },
+        body: JSON.stringify({ postId, locale: 'fr', semanticKey: 'affection' }),
+      });
+      expect(tamperedRes.status).toBe(403);
+      expect(tamperedRes.headers.get('set-cookie')).toBeNull();
+
+      // Idempotency key replay increments count strictly once
+      const idemKey = `idem_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
+      const firstIdem = await fetch(`${srv.baseUrl}/api/public/reactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Forwarded-For': reactIp,
+          Cookie: `ailea_vid=${cookieVal}`,
+        },
+        body: JSON.stringify({ postId, locale: 'fr', semanticKey: 'affection', idempotencyKey: idemKey }),
+      });
+      expect(firstIdem.status).toBe(200);
+      expect(((await firstIdem.json()) as { status: string }).status).toBe('ok');
+
+      const replayIdem = await fetch(`${srv.baseUrl}/api/public/reactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Forwarded-For': reactIp,
+          Cookie: `ailea_vid=${cookieVal}`,
+        },
+        body: JSON.stringify({ postId, locale: 'fr', semanticKey: 'affection', idempotencyKey: idemKey }),
+      });
+      expect(replayIdem.status).toBe(200);
+      expect(((await replayIdem.json()) as { status: string }).status).toBe('duplicate');
+      expect((await repo.get<{ count: number }>(`postReactions/${postId}_affection`))?.count).toBe(1);
+
+      // Exhaust reaction limiter (30/min, 2 already spent above) -> 429 + Retry-After on JSON API and 303 ?reaction_error=rate_limit on No-JS form
+      let saw429 = false;
+      for (let i = 0; i < 32; i += 1) {
+        const res = await fetch(`${srv.baseUrl}/api/public/reactions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Forwarded-For': reactIp,
+            Cookie: `ailea_vid=${cookieVal}`,
+          },
+          body: JSON.stringify({ postId, locale: 'fr', semanticKey: 'affection', idempotencyKey: `idem_burst_${i}` }),
+        });
+        if (res.status === 429) {
+          saw429 = true;
+          expect(Number(res.headers.get('retry-after'))).toBeGreaterThanOrEqual(1);
+          break;
+        }
+      }
+      expect(saw429).toBe(true);
+
+      const throttledForm = await fetch(`${srv.baseUrl}/api/public/reactions/form`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-Forwarded-For': reactIp,
+          Cookie: `ailea_vid=${cookieVal}`,
+        },
+        body: new URLSearchParams({
+          postId,
+          locale: 'fr',
+          semanticKey: 'affection',
+          redirectTo: '/p/fr/article-race-abuse',
+        }),
+      });
+      expect(throttledForm.status).toBe(303);
+      expect(throttledForm.headers.get('location')).toContain('?reaction_error=rate_limit#ailea-reactions');
+
+      // Views limiter exhaustion -> 429 + Retry-After and stops writing postViews
+      const viewIp = '198.51.100.77';
+      let view429At = -1;
+      for (let i = 0; i < 125; i += 1) {
+        const vRes = await fetch(`${srv.baseUrl}/api/public/views`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Forwarded-For': viewIp,
+          },
+          body: JSON.stringify({ postId, locale: 'fr' }),
+        });
+        if (vRes.status === 429) {
+          view429At = i;
+          expect(Number(vRes.headers.get('retry-after'))).toBeGreaterThanOrEqual(1);
+          break;
+        }
+      }
+      expect(view429At).toBeGreaterThanOrEqual(100);
+      const viewsCountBeforeExtra = (
+        await repo.query<PostView>('postViews', { filters: [{ field: 'postId', op: '==', value: postId }] })
+      ).length;
+      const extraView = await fetch(`${srv.baseUrl}/api/public/views`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': viewIp },
+        body: JSON.stringify({ postId, locale: 'fr' }),
+      });
+      expect(extraView.status).toBe(429);
+      const viewsCountAfterExtra = (
+        await repo.query<PostView>('postViews', { filters: [{ field: 'postId', op: '==', value: postId }] })
+      ).length;
+      expect(viewsCountAfterExtra).toBe(viewsCountBeforeExtra);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('rejects cross-workspace media in importMarkdownPost & saveSeoSetting, updates post metadata transactionally, and resumes post cleanup idempotently (AUDIT-001 / AUDIT-014)', async () => {
+    const ownerA = await upsertUserAndResolveWorkspace({
+      uid: 'u_iso_a',
+      email: 'isoa@ailea.test',
+      appBaseUrl: 'https://ailea.example',
+      createPersonalWorkspace: true,
+    });
+    const ownerB = await upsertUserAndResolveWorkspace({
+      uid: 'u_iso_b',
+      email: 'isob@ailea.test',
+      appBaseUrl: 'https://ailea.example',
+      createPersonalWorkspace: true,
+    });
+    const wsA = ownerA.workspace!;
+    const wsB = ownerB.workspace!;
+    const { getRepository } = await import('../src/server/firestoreRepo.ts');
+    const repo = getRepository();
+
+    const foreignAssetId = 'med_foreign_iso_1';
+    await repo.set(`mediaAssets/${foreignAssetId}`, {
+      id: foreignAssetId,
+      workspaceId: wsB.id,
+      filename: 'foreign.png',
+      mimeType: 'image/png',
+      sizeBytes: VALID_PNG_BYTES.length,
+      url: `/api/media/${foreignAssetId}`,
+      storagePath: `workspaces/${wsB.id}/media/${foreignAssetId}.png`,
+      altText: { fr: 'F', en: 'F', fon: 'F' },
+      uploadedBy: 'u_iso_b',
+      createdAt: new Date().toISOString(),
+    });
+
+    // importMarkdownPost rejects cross-workspace featuredImage without leaving partial posts
+    const beforePosts = await repo.query<Post>('posts', {
+      filters: [{ field: 'workspaceId', op: '==', value: wsA.id }],
+    });
+    await expect(
+      importMarkdownPost({
+        workspaceId: wsA.id,
+        actorId: 'u_iso_a',
+        actorName: 'Owner A',
+        actorEmail: 'isoa@ailea.test',
+        rawMarkdown: `---\ntitle: Import Cross Media\nfeaturedImage: /api/media/${foreignAssetId}\n---\nContenu`,
+      })
+    ).rejects.toMatchObject({ code: 'PERMISSION_DENIED', httpStatus: 403 });
+    const afterFailedImport = await repo.query<Post>('posts', {
+      filters: [{ field: 'workspaceId', op: '==', value: wsA.id }],
+    });
+    expect(afterFailedImport).toHaveLength(beforePosts.length);
+
+    // Create valid post & category, test saveSeoSetting cross-workspace ogImageUrl rejection
+    const catA: Category = {
+      id: `${wsA.id}_tech`,
+      workspaceId: wsA.id,
+      slug: 'tech',
+      names: { fr: 'Tech', en: 'Tech', fon: 'Tech' },
+      createdAt: new Date().toISOString(),
+    };
+    await repo.set(`categories/${catA.id}`, catA as unknown as Record<string, unknown>);
+    const postBundle = await createPost({
+      workspaceId: wsA.id,
+      actorId: 'u_iso_a',
+      actorName: 'Owner A',
+      actorEmail: 'isoa@ailea.test',
+      title: 'Post Meta Race',
+      primaryLocale: 'fr',
+      markdownContent: 'Contenu initial.',
+      slug: 'post-meta-race',
+    });
+    await expect(
+      saveSeoSetting({
+        postId: postBundle.post.id,
+        workspaceId: wsA.id,
+        locale: 'fr',
+        actorId: 'u_iso_a',
+        actorEmail: 'isoa@ailea.test',
+        patch: { ogImageUrl: `/api/media/${foreignAssetId}` },
+      })
+    ).rejects.toMatchObject({ code: 'PERMISSION_DENIED', httpStatus: 403 });
+
+    // Concurrent updatePostMetadata + savePostTranslation preserves categoryId atomically
+    await Promise.all([
+      updatePostMetadata({
+        postId: postBundle.post.id,
+        workspaceId: wsA.id,
+        patch: { categoryId: catA.id, reactionLimit: 2 },
+      }),
+      savePostTranslation({
+        postId: postBundle.post.id,
+        workspaceId: wsA.id,
+        locale: 'en',
+        actorId: 'u_iso_a',
+        actorEmail: 'isoa@ailea.test',
+        actorRole: 'owner',
+        title: 'Post Meta Race EN',
+        slug: 'post-meta-race-en',
+        markdownContent: 'English body updated concurrently.',
+        translationStatus: 'approved',
+      }),
+    ]);
+    const afterConcurrentMeta = await getPostBundle(postBundle.post.id, wsA.id, true);
+    expect(afterConcurrentMeta!.post.categoryId).toBe(catA.id);
+    expect(afterConcurrentMeta!.post.reactionLimit).toBe(2);
+    expect(afterConcurrentMeta!.translations.en?.title).toBe('Post Meta Race EN');
+
+    // cleanupDeletedPostChildren: simulate mid-cleanup failure then idempotent resumption
+    await recordPublicView({
+      postId: postBundle.post.id,
+      workspaceId: wsA.id,
+      visitorHash: 'v_cleanup_retry_1',
+      locale: 'fr',
+      referrer: 'Direct',
+    });
+    let failFirstCommit = true;
+    const flakyRepo: DataRepository = {
+      backendName: repo.backendName,
+      ping: () => repo.ping(),
+      get: (p) => repo.get(p),
+      getWorkspaceScoped: (col, id, ws) => repo.getWorkspaceScoped(col, id, ws),
+      query: (c, o) => repo.query(c, o),
+      queryCollectionGroup: (colId, o) => repo.queryCollectionGroup(colId, o),
+      create: (p, d) => repo.create(p, d),
+      set: (p, d) => repo.set(p, d),
+      update: (p, patch) => repo.update(p, patch),
+      delete: (p) => repo.delete(p),
+      runTransaction: (fn) => repo.runTransaction(fn),
+      commitBatch: async (ops) => {
+        if (failFirstCommit) {
+          failFirstCommit = false;
+          throw new RepositoryError('INTERNAL', 'Simulated batch failure mid-cleanup');
+        }
+        return repo.commitBatch(ops);
+      },
+      createWorkspaceWithOwner: (params) => repo.createWorkspaceWithOwner(params),
+      redeemInviteAtomic: (params) => repo.redeemInviteAtomic(params),
+    };
+    setRepository(flakyRepo);
+    await expect(cleanupDeletedPostChildren(postBundle.post.id, wsA.id)).rejects.toThrow(/Simulated batch failure/);
+    setRepository(repo);
+    const cleanedOnRetry = await cleanupDeletedPostChildren(postBundle.post.id, wsA.id);
+    expect(cleanedOnRetry).toBeGreaterThanOrEqual(2);
+    expect(
+      await repo.query('postViews', { filters: [{ field: 'postId', op: '==', value: postBundle.post.id }] })
+    ).toHaveLength(0);
   });
 });

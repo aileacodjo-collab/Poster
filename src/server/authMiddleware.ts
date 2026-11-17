@@ -14,7 +14,7 @@ export interface AuthRequest extends Request {
   memberRole?: UserRole;
 }
 
-const VALID_ID_REGEX = /^[a-zA-Z0-9_-]{1,128}$/;
+const VALID_ID_REGEX = /^[a-zA-Z0-9_-]{1,160}$/;
 
 export async function verifyBearerToken(req: AuthRequest, res: Response): Promise<boolean> {
   const authHeader = req.headers.authorization;
@@ -81,19 +81,23 @@ export async function verifyBearerToken(req: AuthRequest, res: Response): Promis
 }
 
 export async function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
-  const ok = await verifyBearerToken(req, res);
-  if (!ok || !req.user) return;
+  try {
+    const ok = await verifyBearerToken(req, res);
+    if (!ok || !req.user) return;
 
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    const rate = adminMutationLimiter.consume(`${req.user.uid}:${computeIpBucketKey(req)}`);
-    if (!rate.allowed) {
-      res.setHeader('Retry-After', String(rate.retryAfterSeconds));
-      res.status(429).json({ error: 'Trop de requêtes. Veuillez patienter quelques secondes.' });
-      return;
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      const rate = adminMutationLimiter.consume(`${req.user.uid}:${computeIpBucketKey(req)}`);
+      if (!rate.allowed) {
+        res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+        res.status(429).json({ error: 'Trop de requêtes. Veuillez patienter quelques secondes.' });
+        return;
+      }
     }
-  }
 
-  next();
+    next();
+  } catch (err) {
+    next(err);
+  }
 }
 
 /**

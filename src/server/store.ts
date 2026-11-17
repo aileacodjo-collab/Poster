@@ -1477,30 +1477,36 @@ export async function updatePostMetadata(params: {
   };
 }): Promise<Post> {
   const repo = getRepository();
-  const current = await repo.getWorkspaceScoped<Post>('posts', params.postId, params.workspaceId);
-  if (!current) throw new RepositoryError('NOT_FOUND', 'Article introuvable.');
 
   if (params.patch.featuredImageUrl !== undefined && params.patch.featuredImageUrl !== '') {
     await assertWorkspaceSafeMediaUrl(params.patch.featuredImageUrl, params.workspaceId);
   }
   await validateTaxonomyForWorkspace(params.workspaceId, params.patch.categoryId, params.patch.tagIds);
 
-  const updated: Post = {
-    ...current,
-    primaryLocale: params.patch.primaryLocale ?? current.primaryLocale,
-    categoryId: params.patch.categoryId !== undefined ? params.patch.categoryId : current.categoryId,
-    tagIds: params.patch.tagIds ?? current.tagIds,
-    featuredImageUrl: params.patch.featuredImageUrl ?? current.featuredImageUrl,
-    reactionLimit:
-      typeof params.patch.reactionLimit === 'number'
-        ? Math.max(1, Math.min(10, Math.floor(params.patch.reactionLimit)))
-        : current.reactionLimit,
-    allowReactionChange: params.patch.allowReactionChange ?? current.allowReactionChange,
-    updatedAt: nowIso(),
-  };
+  return repo.runTransaction(async (tx) => {
+    const current = await tx.get<Post>(`posts/${params.postId}`);
+    if (!current || current.workspaceId !== params.workspaceId) {
+      if (!current) throw new RepositoryError('NOT_FOUND', 'Article introuvable.');
+      throw new RepositoryError('PERMISSION_DENIED', 'Accès inter-espaces refusé.');
+    }
 
-  await repo.set(`posts/${params.postId}`, updated as unknown as Record<string, unknown>);
-  return updated;
+    const updated: Post = {
+      ...current,
+      primaryLocale: params.patch.primaryLocale ?? current.primaryLocale,
+      categoryId: params.patch.categoryId !== undefined ? params.patch.categoryId : current.categoryId,
+      tagIds: params.patch.tagIds ?? current.tagIds,
+      featuredImageUrl: params.patch.featuredImageUrl ?? current.featuredImageUrl,
+      reactionLimit:
+        typeof params.patch.reactionLimit === 'number'
+          ? Math.max(1, Math.min(10, Math.floor(params.patch.reactionLimit)))
+          : current.reactionLimit,
+      allowReactionChange: params.patch.allowReactionChange ?? current.allowReactionChange,
+      updatedAt: nowIso(),
+    };
+
+    tx.set(`posts/${params.postId}`, updated as unknown as Record<string, unknown>);
+    return updated;
+  });
 }
 
 export async function cleanupDeletedPostChildren(postId: string, workspaceId: string): Promise<number> {
