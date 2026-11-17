@@ -41,7 +41,8 @@ import {
   uploadMediaAssetToStorage,
   upsertUserAndResolveWorkspace,
 } from '../src/server/store.ts';
-import { Category, MediaAsset, Workspace } from '../src/shared/types.ts';
+import { renderNotFoundHtml, renderPublicIndexHtml, renderPublicPostHtml } from '../src/server/ssr.ts';
+import { Category, FullPostBundle, MediaAsset, Workspace } from '../src/shared/types.ts';
 
 const VALID_PNG_BYTES = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -844,5 +845,135 @@ describe('Phase 1 Remediation — Repository, HTTP, Media, Invites & Backup Regr
     const exhausted = await consumeDistributedRateLimit(repo, distBucket, 2, 60_000);
     expect(exhausted.allowed).toBe(false);
     expect(exhausted.retryAfterSeconds).toBeGreaterThanOrEqual(1);
+  });
+
+  it('renders unified minimal public header and 96%-height No-JS bottom sheet across post, index, and 404 SSR views', () => {
+    const ws1: Workspace = {
+      id: 'ws_ssr_1',
+      name: 'Revue AILEA',
+      slug: 'revue-ailea',
+      brandName: 'Revue AILEA',
+      ownerId: 'u_1',
+      baseUrl: 'https://ailea.example',
+      defaultLocale: 'fr',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const ws2: Workspace = {
+      ...ws1,
+      id: 'ws_ssr_2',
+      name: 'Revue Bénin',
+      slug: 'revue-benin',
+      brandName: 'Revue Bénin',
+    };
+    const bundle: FullPostBundle = {
+      post: {
+        id: 'post_ssr_1',
+        workspaceId: ws1.id,
+        primaryLocale: 'fr',
+        status: 'published',
+        publishedAt: '2026-02-01T00:00:00.000Z',
+        createdAt: '2026-02-01T00:00:00.000Z',
+        updatedAt: '2026-02-01T00:00:00.000Z',
+        authorId: 'u_1',
+        authorName: 'Auteur Test',
+        featuredImageUrl: '',
+        categoryId: null,
+        tagIds: [],
+        reactionLimit: 1,
+        allowReactionChange: true,
+        currentVersionNumber: 1,
+        publishedVersionNumber: 1,
+      },
+      translations: {
+        fr: {
+          id: 'post_ssr_1_fr',
+          postId: 'post_ssr_1',
+          workspaceId: ws1.id,
+          locale: 'fr',
+          title: 'Titre SSR Public',
+          slug: 'titre-ssr-public',
+          markdownContent: 'Contenu test',
+          sanitizedHtml: '<p>Contenu test</p>',
+          excerpt: 'Contenu test',
+          frontmatterJson: {},
+          translationStatus: 'approved',
+          wordCount: 2,
+          readingTimeMinutes: 1,
+          updatedAt: '2026-02-01T00:00:00.000Z',
+        },
+        en: {
+          id: 'post_ssr_1_en',
+          postId: 'post_ssr_1',
+          workspaceId: ws1.id,
+          locale: 'en',
+          title: 'Public SSR Title',
+          slug: 'public-ssr-title',
+          markdownContent: 'Test content',
+          sanitizedHtml: '<p>Test content</p>',
+          excerpt: 'Test content',
+          frontmatterJson: {},
+          translationStatus: 'approved',
+          wordCount: 2,
+          readingTimeMinutes: 1,
+          updatedAt: '2026-02-01T00:00:00.000Z',
+        },
+        fon: {
+          id: 'post_ssr_1_fon',
+          postId: 'post_ssr_1',
+          workspaceId: ws1.id,
+          locale: 'fon',
+          title: 'Xówlǎn SSR',
+          slug: 'xowlan-ssr',
+          markdownContent: 'Wéma test',
+          sanitizedHtml: '<p>Wéma test</p>',
+          excerpt: 'Wéma test',
+          frontmatterJson: {},
+          translationStatus: 'approved',
+          wordCount: 2,
+          readingTimeMinutes: 1,
+          updatedAt: '2026-02-01T00:00:00.000Z',
+        },
+      },
+      seo: { fr: null, en: null, fon: null },
+      reactions: [],
+      versions: [],
+      publishingEvents: [],
+    };
+
+    const postHtml = renderPublicPostHtml({
+      baseUrl: 'https://ailea.example',
+      workspace: ws1,
+      bundle,
+      locale: 'fr',
+      category: null,
+      activeReactionKeys: [],
+      relatedPosts: [],
+    });
+    expect(postHtml).toContain('id="ailea-menu-trigger"');
+    expect(postHtml).toContain('id="ailea-sheet-toggle"');
+    expect(postHtml).toContain('id="ailea-public-sheet"');
+    expect(postHtml).toContain('height: 96dvh;');
+    expect(postHtml).toContain('hreflang="en"');
+    expect(postHtml).not.toContain('hreflang="fon"');
+
+    const multiWsIndexHtml = renderPublicIndexHtml({
+      baseUrl: 'https://ailea.example',
+      locale: 'fon',
+      items: [
+        { post: bundle.post, translation: bundle.translations.fon!, workspace: ws1, reactions: [] },
+        { post: { ...bundle.post, id: 'post_ssr_2', workspaceId: ws2.id }, translation: bundle.translations.fon!, workspace: ws2, reactions: [] },
+      ],
+    });
+    expect(multiWsIndexHtml).toContain('>AILEA Revue</a>');
+    expect(multiWsIndexHtml).toContain('id="ailea-public-sheet"');
+    expect(multiWsIndexHtml).not.toContain('hreflang="fon"');
+
+    const notFoundHtml = renderNotFoundHtml('en', 'https://ailea.example');
+    expect(notFoundHtml).toContain('class="topbar"');
+    expect(notFoundHtml).toContain('id="ailea-menu-trigger"');
+    expect(notFoundHtml).toContain('id="ailea-public-sheet"');
+    expect(notFoundHtml).toContain('hreflang="fr"');
+    expect(notFoundHtml).not.toContain('hreflang="fon"');
   });
 });

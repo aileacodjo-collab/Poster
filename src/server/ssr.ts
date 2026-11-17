@@ -71,33 +71,173 @@ const SHARED_SSR_STYLES = `
     outline-offset: 2px;
   }
   .topbar {
-    background: rgba(255, 255, 255, 0.92);
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: rgba(255, 255, 255, 0.94);
     backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--ailea-border);
   }
   .topbar-inner {
     max-width: 1080px;
     margin: 0 auto;
-    padding: 12px 20px;
+    padding: 10px 20px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    flex-wrap: wrap;
   }
   .brand-mark {
+    display: inline-flex;
+    align-items: center;
+    min-height: 48px;
     font-weight: 700;
-    font-size: 1.05rem;
+    font-size: 1.08rem;
     letter-spacing: -0.02em;
     color: var(--ailea-ink);
     text-decoration: none;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .lang-switcher {
+  .menu-trigger {
+    min-height: 48px;
+    min-width: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    border: 1px solid var(--ailea-border);
+    background: #FFFFFF;
+    color: var(--ailea-ink);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .menu-trigger:hover {
+    background: var(--ailea-canvas);
+  }
+  .sheet-toggle {
+    position: fixed;
+    opacity: 0;
+    pointer-events: none;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+  }
+  .sheet-root {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    pointer-events: none;
+    visibility: hidden;
+    transition: visibility 0s linear 280ms;
+  }
+  .sheet-toggle:checked ~ .sheet-root {
+    pointer-events: auto;
+    visibility: visible;
+    transition: visibility 0s linear 0s;
+  }
+  .sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(23, 25, 28, 0.45);
+    backdrop-filter: blur(2px);
+    opacity: 0;
+    transition: opacity 200ms ease;
+    cursor: pointer;
+  }
+  .sheet-toggle:checked ~ .sheet-root .sheet-backdrop {
+    opacity: 1;
+  }
+  .sheet-panel {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 512px;
+    height: 96vh;
+    height: 96dvh;
+    background: #FFFFFF;
+    border-radius: 24px 24px 0 0;
+    border-top: 1px solid var(--ailea-border);
+    border-left: 1px solid var(--ailea-border);
+    border-right: 1px solid var(--ailea-border);
+    box-shadow: 0 -16px 44px -12px rgba(23, 25, 28, 0.22);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    will-change: transform;
+    transform: translate3d(0, 100%, 0);
+    transition: transform 260ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .sheet-toggle:checked ~ .sheet-root .sheet-panel {
+    transform: translate3d(0, var(--sheet-drag-y, 0px), 0);
+    transition: transform 340ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .sheet-panel.is-dragging {
+    transition: none !important;
+  }
+  .sheet-header {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--ailea-border);
+    flex-shrink: 0;
+    touch-action: none;
+    user-select: none;
+    cursor: grab;
+  }
+  .sheet-header:active { cursor: grabbing; }
+  .sheet-handle {
+    width: 40px;
+    height: 6px;
+    border-radius: 999px;
+    background: #CBD5E1;
+    margin: 0 auto 12px;
+  }
+  .sheet-header-row {
     display: flex;
     align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .sheet-close {
+    min-height: 48px;
+    min-width: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    color: var(--ailea-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .sheet-close:hover {
+    background: var(--ailea-canvas);
+    color: var(--ailea-ink);
+  }
+  .sheet-body {
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .sheet-footer {
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid var(--ailea-border);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .lang-switcher {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    gap: 8px;
   }
   .lang-link {
     display: inline-flex;
@@ -105,23 +245,28 @@ const SHARED_SSR_STYLES = `
     justify-content: center;
     min-height: 48px;
     padding: 0 14px;
-    border-radius: 10px;
+    border-radius: 12px;
     font-size: 0.875rem;
     font-weight: 600;
     text-decoration: none;
     color: var(--ailea-muted);
-    border: 1px solid transparent;
+    background: #F8FAFB;
+    border: 1px solid var(--ailea-border);
     white-space: nowrap;
   }
   .lang-link:hover {
-    background: #FFFFFF;
+    background: var(--ailea-canvas);
     color: var(--ailea-ink);
-    border-color: var(--ailea-border);
   }
   .lang-link[aria-current="page"] {
     background: var(--ailea-mint);
     color: var(--ailea-emerald);
-    border-color: #B8DFC6;
+    border-color: rgba(0, 107, 53, 0.3);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sheet-backdrop, .sheet-panel, .sheet-root {
+      transition: none !important;
+    }
   }
   .container-reading {
     max-width: 780px;
@@ -270,7 +415,7 @@ const SHARED_SSR_STYLES = `
     gap: 8px;
     min-height: 48px;
     padding: 0 18px;
-    border-radius: 10px;
+    border-radius: 12px;
     border: 1px solid var(--ailea-border);
     background: #FFFFFF;
     color: var(--ailea-ink);
@@ -278,6 +423,7 @@ const SHARED_SSR_STYLES = `
     font-size: 0.9rem;
     font-weight: 600;
     text-decoration: none;
+    white-space: nowrap;
     cursor: pointer;
   }
   .action-btn-primary {
@@ -290,6 +436,161 @@ const SHARED_SSR_STYLES = `
   .action-btn-primary:hover { background: var(--ailea-emerald-hover); }
   .tabular { font-variant-numeric: tabular-nums; }
 `;
+
+const SHARED_SHEET_SCRIPT = `
+  (function () {
+    var toggle = document.getElementById('ailea-sheet-toggle');
+    var trigger = document.getElementById('ailea-menu-trigger');
+    var closeLabel = document.getElementById('ailea-sheet-close');
+    var panel = document.getElementById('ailea-public-sheet');
+    var header = document.getElementById('ailea-sheet-drag-header');
+    if (!toggle || !panel) return;
+
+    function syncState() {
+      var isOpen = Boolean(toggle.checked);
+      if (trigger) trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      document.body.style.overflow = isOpen ? 'hidden' : '';
+      if (!isOpen) panel.style.removeProperty('--sheet-drag-y');
+    }
+
+    toggle.addEventListener('change', syncState);
+
+    function handleTriggerKey(e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggle.checked = !toggle.checked;
+        syncState();
+      }
+    }
+    if (trigger) trigger.addEventListener('keydown', handleTriggerKey);
+    if (closeLabel) closeLabel.addEventListener('keydown', handleTriggerKey);
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && toggle.checked) {
+        toggle.checked = false;
+        syncState();
+        if (trigger) trigger.focus();
+      }
+    });
+
+    if (header) {
+      var dragging = false;
+      var startY = 0;
+      var startTime = 0;
+      var currentDelta = 0;
+
+      header.addEventListener('pointerdown', function (e) {
+        if (e.target && e.target.closest && e.target.closest('label')) return;
+        dragging = true;
+        startY = e.clientY;
+        startTime = Date.now();
+        currentDelta = 0;
+        panel.classList.add('is-dragging');
+        if (header.setPointerCapture) {
+          try { header.setPointerCapture(e.pointerId); } catch (_) {}
+        }
+      });
+
+      header.addEventListener('pointermove', function (e) {
+        if (!dragging) return;
+        var raw = e.clientY - startY;
+        currentDelta = raw < 0 ? raw * 0.08 : raw;
+        panel.style.setProperty('--sheet-drag-y', currentDelta + 'px');
+      });
+
+      function endDrag() {
+        if (!dragging) return;
+        dragging = false;
+        panel.classList.remove('is-dragging');
+        var elapsed = Math.max(1, Date.now() - startTime);
+        var velocity = (currentDelta / elapsed) * 1000;
+        panel.style.removeProperty('--sheet-drag-y');
+        if (currentDelta > 90 || velocity > 450) {
+          toggle.checked = false;
+          syncState();
+        }
+      }
+
+      header.addEventListener('pointerup', endDrag);
+      header.addEventListener('pointercancel', endDrag);
+    }
+  })();
+`;
+
+function renderPublicHeaderAndSheet(params: {
+  brandName: string;
+  subtitle?: string;
+  locale: Locale;
+  languageLinksHtml: string;
+  footerActionsHtml: string;
+}): string {
+  const { brandName, subtitle, locale, languageLinksHtml, footerActionsHtml } = params;
+  const dict = UI_STRINGS[locale];
+  const closeAria = locale === 'en' ? 'Close' : 'Fermer';
+  return `
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="/p/${escHtml(locale)}" class="brand-mark clay-control">${escHtml(brandName)}</a>
+      <label
+        id="ailea-menu-trigger"
+        for="ailea-sheet-toggle"
+        role="button"
+        tabindex="0"
+        class="menu-trigger clay-control"
+        aria-label="Menu"
+        aria-controls="ailea-public-sheet"
+        aria-expanded="false"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+      </label>
+    </div>
+  </header>
+
+  <input type="checkbox" id="ailea-sheet-toggle" class="sheet-toggle" aria-hidden="true" tabindex="-1" />
+  <div class="sheet-root">
+    <label for="ailea-sheet-toggle" class="sheet-backdrop" aria-hidden="true"></label>
+    <section
+      id="ailea-public-sheet"
+      class="sheet-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-label="${escHtml(brandName)}"
+    >
+      <div id="ailea-sheet-drag-header" class="sheet-header">
+        <div class="sheet-handle" aria-hidden="true"></div>
+        <div class="sheet-header-row">
+          <div style="min-width:0;">
+            <div style="font-size:1rem;font-weight:700;letter-spacing:-0.015em;color:var(--ailea-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(brandName)}</div>
+            ${subtitle ? `<div style="font-size:0.75rem;color:var(--ailea-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(subtitle)}</div>` : ''}
+          </div>
+          <label
+            id="ailea-sheet-close"
+            for="ailea-sheet-toggle"
+            role="button"
+            tabindex="0"
+            class="sheet-close clay-control"
+            aria-label="${escHtml(closeAria)}"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </label>
+        </div>
+      </div>
+
+      <div class="sheet-body">
+        <div>
+          <div style="font-size:0.75rem;font-weight:600;color:var(--ailea-muted);margin-bottom:8px;">${escHtml(dict.publicReader.switchLanguage)}</div>
+          <nav class="lang-switcher" aria-label="${escHtml(dict.publicReader.switchLanguage)}">
+            ${languageLinksHtml}
+          </nav>
+        </div>
+
+        <div class="sheet-footer">
+          ${footerActionsHtml}
+        </div>
+      </div>
+    </section>
+  </div>`;
+}
 
 export function renderPublicPostHtml(params: {
   baseUrl: string;
@@ -332,7 +633,7 @@ export function renderPublicPostHtml(params: {
     const href = buildPublicPostPath(loc, tr.slug);
     const isCurrent = loc === locale;
     const hreflangAttr = loc === 'fon' ? '' : ` hreflang="${loc}"`;
-    return `<a href="${escHtml(href)}" class="lang-link"${isCurrent ? ' aria-current="page"' : ''}${hreflangAttr}>${escHtml(LOCALE_META[loc].nativeName)}</a>`;
+    return `<a href="${escHtml(href)}" class="lang-link clay-control"${isCurrent ? ' aria-current="page"' : ''}${hreflangAttr}>${escHtml(LOCALE_META[loc].nativeName)}</a>`;
   })
     .filter(Boolean)
     .join('\n          ');
@@ -408,15 +709,21 @@ ${hreflangTagsHtml}
   <style>${SHARED_SSR_STYLES}</style>
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar-inner">
-      <a href="/p/${escHtml(locale)}" class="brand-mark">${escHtml(workspace.brandName)}</a>
-      <nav class="lang-switcher" aria-label="${escHtml(dict.publicReader.switchLanguage)}">
-        ${languageLinksHtml}
-      </nav>
-      <a href="/p/${escHtml(locale)}" class="action-btn" style="white-space:nowrap;">${escHtml(dict.publicReader.allArticles)}</a>
-    </div>
-  </header>
+  ${renderPublicHeaderAndSheet({
+    brandName: workspace.brandName,
+    subtitle: dict.brandTagline,
+    locale,
+    languageLinksHtml,
+    footerActionsHtml: `
+      <a href="/p/${escHtml(locale)}" class="action-btn clay-control" style="width:100%;justify-content:space-between;">
+        <span>${escHtml(dict.publicReader.allArticles)}</span>
+        <span aria-hidden="true">→</span>
+      </a>
+      <a href="/" class="action-btn clay-control" style="width:100%;justify-content:space-between;">
+        <span>Studio AILEA</span>
+        <span aria-hidden="true">↗</span>
+      </a>`,
+  })}
 
   <main class="container-reading">
     <article class="clay-card" style="padding:clamp(22px, 4vw, 44px);">
@@ -540,6 +847,7 @@ ${hreflangTagsHtml}
         });
       }
     })();
+    ${SHARED_SHEET_SCRIPT}
   </script>
 </body>
 </html>`;
@@ -557,7 +865,8 @@ export function renderPublicIndexHtml(params: {
 }): string {
   const { baseUrl, locale, items } = params;
   const dict = UI_STRINGS[locale];
-  const brandName = items[0]?.workspace.brandName || 'AILEA Revue';
+  const uniqueWorkspaces = new Set(items.map((item) => item.workspace.id));
+  const brandName = uniqueWorkspaces.size === 1 ? items[0].workspace.brandName : 'AILEA Revue';
   const canonicalUrl = buildAbsoluteUrl(baseUrl, `/p/${locale}`);
 
   const cardsHtml =
@@ -617,18 +926,20 @@ ${locale !== 'fon' ? hreflangsHtml : ''}
   <style>${SHARED_SSR_STYLES}</style>
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar-inner">
-      <a href="/p/${escHtml(locale)}" class="brand-mark">${escHtml(brandName)}</a>
-      <nav class="lang-switcher" aria-label="${escHtml(dict.publicReader.switchLanguage)}">
-        ${SUPPORTED_LOCALES.map(
-          (loc) =>
-            `<a href="/p/${loc}" class="lang-link" ${loc === locale ? 'aria-current="page"' : ''}>${escHtml(LOCALE_META[loc].nativeName)}</a>`
-        ).join('')}
-      </nav>
-      <a href="/" class="action-btn">Studio AILEA</a>
-    </div>
-  </header>
+  ${renderPublicHeaderAndSheet({
+    brandName,
+    subtitle: dict.brandTagline,
+    locale,
+    languageLinksHtml: SUPPORTED_LOCALES.map(
+      (loc) =>
+        `<a href="/p/${loc}" class="lang-link clay-control"${loc === locale ? ' aria-current="page"' : ''}${loc === 'fon' ? '' : ` hreflang="${loc}"`}>${escHtml(LOCALE_META[loc].nativeName)}</a>`
+    ).join('\n            '),
+    footerActionsHtml: `
+      <a href="/" class="action-btn clay-control" style="width:100%;justify-content:space-between;">
+        <span>Studio AILEA</span>
+        <span aria-hidden="true">↗</span>
+      </a>`,
+  })}
 
   <main style="max-width:1020px;margin:0 auto;padding:36px 16px 72px;">
     <h1 style="font-family:'Lora','Noto Sans',serif;font-size:clamp(1.85rem,3.6vw,2.6rem);margin:0 0 28px;">${escHtml(dict.publicReader.allArticles)}</h1>
@@ -636,11 +947,13 @@ ${locale !== 'fon' ? hreflangsHtml : ''}
       ${cardsHtml}
     </div>
   </main>
+  <script>${SHARED_SHEET_SCRIPT}</script>
 </body>
 </html>`;
 }
 
 export function renderNotFoundHtml(locale: Locale, baseUrl: string): string {
+  const dict = UI_STRINGS[locale];
   const title = locale === 'en' ? 'Article not found' : locale === 'fon' ? 'Xówlǎn élɔ́ ɖò fí ǎ' : 'Article introuvable';
   const back = locale === 'en' ? 'Back to publications' : locale === 'fon' ? 'Lɛ́ kɔ wá tò-bǐ tɛ́n' : 'Retour aux publications';
   return `<!doctype html>
@@ -653,13 +966,33 @@ export function renderNotFoundHtml(locale: Locale, baseUrl: string): string {
   <style>${SHARED_SSR_STYLES}</style>
 </head>
 <body>
+  ${renderPublicHeaderAndSheet({
+    brandName: 'AILEA PostManager',
+    subtitle: dict.brandTagline,
+    locale,
+    languageLinksHtml: SUPPORTED_LOCALES.map(
+      (loc) =>
+        `<a href="/p/${loc}" class="lang-link clay-control"${loc === locale ? ' aria-current="page"' : ''}${loc === 'fon' ? '' : ` hreflang="${loc}"`}>${escHtml(LOCALE_META[loc].nativeName)}</a>`
+    ).join('\n            '),
+    footerActionsHtml: `
+      <a href="/p/${escHtml(locale)}" class="action-btn clay-control" style="width:100%;justify-content:space-between;">
+        <span>${escHtml(back)}</span>
+        <span aria-hidden="true">→</span>
+      </a>
+      <a href="/" class="action-btn clay-control" style="width:100%;justify-content:space-between;">
+        <span>Studio AILEA</span>
+        <span aria-hidden="true">↗</span>
+      </a>`,
+  })}
+
   <main class="container-reading">
     <div class="clay-card" style="padding:40px;text-align:center;">
       <h1 style="margin:0 0 12px;font-size:1.6rem;">${escHtml(title)}</h1>
       <p style="color:var(--ailea-muted);margin:0 0 24px;">${escHtml(baseUrl)}</p>
-      <a href="/p/${escHtml(locale)}" class="action-btn action-btn-primary">${escHtml(back)}</a>
+      <a href="/p/${escHtml(locale)}" class="action-btn action-btn-primary clay-control">${escHtml(back)}</a>
     </div>
   </main>
+  <script>${SHARED_SHEET_SCRIPT}</script>
 </body>
 </html>`;
 }
